@@ -37,12 +37,28 @@ class TokenResponse(BaseModel):
     token: str
     user: UserOut
 
+class EngagementUserAssign(BaseModel):
+    user_id: str
+    role: str = "Preparer"
+
+class EngagementUserOut(BaseModel):
+    id: str
+    engagement_id: str
+    user_id: str
+    full_name: str
+    email: str
+    initials: Optional[str] = None
+    system_role: str
+    engagement_role: str
+    assigned_at: Optional[datetime] = None
+
 # ── Engagement ────────────────────────────────────────────────────────────────
 class EngagementCreate(BaseModel):
     client_name: str
     financial_year: str
-    engagement_type: str = "statutory-audit"
+    engagement_type: str = "statutory-audit-corporate"
     is_eqcr_designated: bool = False
+    is_small_entity: bool = False
 
 class EngagementOut(BaseModel):
     engagement_id: str
@@ -51,6 +67,8 @@ class EngagementOut(BaseModel):
     engagement_type: str
     status: str
     is_eqcr_designated: bool
+    is_small_entity: bool
+    workflow_override: bool
     created_by: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -73,6 +91,21 @@ class EngagementDetail(EngagementOut):
 
 class RollForwardRequest(BaseModel):
     new_financial_year: str
+    copy_prior_wps: bool = False
+
+# ── Working Paper Links ────────────────────────────────────────────────────────
+class WPLinkCreate(BaseModel):
+    target_wp_number: str
+
+class WPLinkOut(BaseModel):
+    link_id: str
+    source_wp_id: str
+    target_wp_id: str
+    target_wp_number: str
+    target_filename: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 # ── Working Paper ─────────────────────────────────────────────────────────────
 class WPOut(BaseModel):
@@ -152,6 +185,9 @@ class FileVersionOut(BaseModel):
 class NoteCreate(BaseModel):
     note_text: str
 
+class NoteResponseCreate(BaseModel):
+    response_text: str
+
 class NoteOut(BaseModel):
     note_id: str
     wp_id: str
@@ -163,6 +199,9 @@ class NoteOut(BaseModel):
     raised_at: Optional[datetime] = None
     closed_by_name: Optional[str] = None
     closed_at: Optional[datetime] = None
+    response_text: Optional[str] = None
+    responded_by_name: Optional[str] = None
+    responded_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 

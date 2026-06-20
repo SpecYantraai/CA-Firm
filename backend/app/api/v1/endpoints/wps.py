@@ -7,15 +7,19 @@ import os, shutil, uuid, pathlib
 import urllib.request
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_roles
+from app.core.deps import (
+    get_current_user, require_roles, get_user_engagement_role,
+    ensure_engagement_editable, ensure_section_editable, can_prepare, can_review
+)
 from app.core.security import create_access_token, decode_token
 from app.core.config import settings, ALLOWED_EXTENSIONS
 from app.models.models import (
     WorkingPaper, FileVersion, ReviewNote, SignOff, Folder, Section,
-    Engagement, User
+    Engagement, User, WorkingPaperLink
 )
 from app.schemas.schemas import (
-    WPOut, WPUpdate, FileVersionOut, NoteCreate, NoteOut, SignOffCreate, SignOffOut
+    WPOut, WPUpdate, FileVersionOut, NoteCreate, NoteResponseCreate,
+    NoteOut, SignOffCreate, SignOffOut, WPLinkCreate, WPLinkOut
 )
 from app.services.numbering import assign_wp_number, check_wp_number_conflict
 from app.services.events import emit_event
@@ -40,8 +44,15 @@ def get_wp_or_404(wp_id: str, db: Session) -> WorkingPaper:
     return wp
 
 
+def get_wp_section(db: Session, wp: WorkingPaper) -> Section:
+    section = db.query(Section).filter(Section.section_id == wp.section_id).first()
+    if not section:
+        raise HTTPException(status_code=400, detail={"error": "Working paper section not found", "code": "SECTION_NOT_FOUND"})
+    return section
+
+
 def wp_to_out(wp: WorkingPaper) -> WPOut:
-    open_notes = sum(1 for n in wp.review_notes if n.status == "Open")
+    open_notes = sum(1 for n in wp.review_notes if n.status != "Closed")
     return WPOut(
         wp_id=wp.wp_id, engagement_id=wp.engagement_id,
         section_id=wp.section_id, folder_id=wp.folder_id,
@@ -131,12 +142,11 @@ async def upload_wp(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if current_user.role == "EQCR Reviewer":
+    engagement_role = get_user_engagement_role(db, engagement_id, current_user)
+    if not can_prepare(engagement_role):
         raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot upload WPs", "code": "INSUFFICIENT_ROLE"})
 
-    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
-    if not eng or eng.status == "Archived":
-        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+    ensure_engagement_editable(db, engagement_id)
 
     # Extension check
     ext = pathlib.Path(file.filename).suffix.lower()
@@ -158,6 +168,7 @@ async def upload_wp(
     section = db.query(Section).filter(Section.section_id == folder.section_id).first()
     if not section or section.engagement_id != engagement_id:
         raise HTTPException(status_code=400, detail={"error": "Folder section does not belong to this engagement", "code": "ENGAGEMENT_MISMATCH"})
+    ensure_section_editable(db, engagement_id, section.section_code)
 
     # Assign WP number
     if wp_number:
@@ -260,11 +271,20 @@ def get_editor_config(
             "enabled": False,
             "message": "This engagement is archived. Documents can be previewed or downloaded, but cannot be edited."
         }
-    if current_user.role == "EQCR Reviewer":
+    if not can_prepare(get_user_engagement_role(db, wp.engagement_id, current_user)):
         return {
             "enabled": False,
-            "message": "EQCR reviewers have read-only access to working paper files."
+            "message": "Your engagement role has read-only access to working paper files."
         }
+    section = get_wp_section(db, wp)
+    if section and section.section_code and section.section_code not in ("1000", "3000", "MISC"):
+        try:
+            ensure_section_editable(db, wp.engagement_id, section.section_code)
+        except HTTPException:
+            return {
+                "enabled": False,
+                "message": "This section is locked by the sequential workflow."
+            }
     ext = (wp.file_format or pathlib.Path(wp.filename).suffix.lstrip(".")).lower()
     if ext not in EDITOR_EXTENSIONS:
         raise HTTPException(status_code=415, detail={"error": "This file type cannot be edited in the document editor", "code": "EDITOR_UNSUPPORTED"})
@@ -338,7 +358,7 @@ async def editor_callback(
     eng = db.query(Engagement).filter(Engagement.engagement_id == wp.engagement_id).first()
     if eng and eng.status == "Archived":
         return JSONResponse({"error": 1})
-    if user and user.role == "EQCR Reviewer":
+    if user and not can_prepare(get_user_engagement_role(db, wp.engagement_id, user)):
         return JSONResponse({"error": 1})
 
     body = await request.json()
@@ -394,7 +414,9 @@ async def replace_wp(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
-    if current_user.role == "EQCR Reviewer":
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    if not can_prepare(get_user_engagement_role(db, wp.engagement_id, current_user)):
         raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot replace WPs", "code": "INSUFFICIENT_ROLE"})
 
     content = await file.read()
@@ -458,6 +480,8 @@ def update_wp(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
     if payload.wp_number and payload.wp_number != wp.wp_number:
         if current_user.role not in INDEX_OVERRIDE_ROLES:
             raise HTTPException(status_code=403, detail={"error": "Only Manager, Partner or Admin can override WP indexes", "code": "INSUFFICIENT_ROLE"})
@@ -493,6 +517,8 @@ def soft_delete_wp(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
     wp.is_deleted = True
     emit_event(db, "wp.deleted", current_user.user_id, current_user.full_name,
                engagement_id=wp.engagement_id, payload={"wp_id": wp_id})
@@ -509,6 +535,10 @@ def submit_for_review(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    if wp.prepared_by and wp.prepared_by != current_user.user_id:
+        raise HTTPException(status_code=403, detail={"error": "Only the WP preparer can submit it for review", "code": "INSUFFICIENT_ROLE"})
     wp.review_status = "Submitted"
     emit_event(db, "review.submitted", current_user.user_id, current_user.full_name,
                engagement_id=wp.engagement_id, payload={"wp_id": wp_id})
@@ -523,7 +553,11 @@ def finalise_wp(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
-    open_notes = db.query(ReviewNote).filter(ReviewNote.wp_id == wp_id, ReviewNote.status == "Open").count()
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    if not can_review(get_user_engagement_role(db, wp.engagement_id, current_user)):
+        raise HTTPException(status_code=403, detail={"error": "Only engagement reviewers can finalise WPs", "code": "INSUFFICIENT_ROLE"})
+    open_notes = db.query(ReviewNote).filter(ReviewNote.wp_id == wp_id, ReviewNote.status != "Closed").count()
     if open_notes > 0:
         raise HTTPException(status_code=400, detail={"error": f"{open_notes} open note(s) must be closed first", "code": "OPEN_NOTES_EXIST"})
     wp.review_status = "Finalised"
@@ -560,6 +594,10 @@ def raise_note(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    if not can_review(get_user_engagement_role(db, wp.engagement_id, current_user)):
+        raise HTTPException(status_code=403, detail={"error": "Only engagement reviewers can raise review notes", "code": "INSUFFICIENT_ROLE"})
     note = ReviewNote(
         wp_id=wp_id,
         engagement_id=wp.engagement_id,
@@ -587,6 +625,9 @@ def close_note(
     note = db.query(ReviewNote).filter(ReviewNote.note_id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail={"error": "Note not found", "code": "NOT_FOUND"})
+    ensure_engagement_editable(db, note.engagement_id)
+    if not can_review(get_user_engagement_role(db, note.engagement_id, current_user)):
+        raise HTTPException(status_code=403, detail={"error": "Only engagement reviewers can close review notes", "code": "INSUFFICIENT_ROLE"})
     note.status = "Closed"
     note.closed_by = current_user.user_id
     note.closed_by_name = current_user.full_name
@@ -597,6 +638,128 @@ def close_note(
     return {"data": NoteOut.model_validate(note), "message": "Note closed"}
 
 
+@router.patch("/notes/{note_id}/respond")
+def respond_to_note(
+    note_id: str,
+    payload: NoteResponseCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    note = db.query(ReviewNote).filter(ReviewNote.note_id == note_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail={"error": "Note not found", "code": "NOT_FOUND"})
+    wp = get_wp_or_404(note.wp_id, db)
+    ensure_engagement_editable(db, note.engagement_id)
+    ensure_section_editable(db, note.engagement_id, get_wp_section(db, wp).section_code)
+    if wp.prepared_by and wp.prepared_by != current_user.user_id and current_user.role not in ("Audit Manager", "Partner", "Admin"):
+        raise HTTPException(status_code=403, detail={"error": "Only the WP preparer can respond to this note", "code": "INSUFFICIENT_ROLE"})
+    note.response_text = payload.response_text.strip()
+    note.responded_by = current_user.user_id
+    note.responded_by_name = current_user.full_name
+    note.responded_at = datetime.utcnow()
+    note.status = "Responded"
+    wp.review_status = "Under Review"
+    emit_event(db, "note.responded", current_user.user_id, current_user.full_name,
+               engagement_id=note.engagement_id, payload={"wp_id": wp.wp_id, "note_id": note_id})
+    db.commit()
+    return {"data": NoteOut.model_validate(note), "message": "Response submitted for re-review"}
+
+
+@router.get("/wps/{wp_id}/links")
+def list_wp_links(
+    wp_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    wp = get_wp_or_404(wp_id, db)
+    rows = db.query(WorkingPaperLink, WorkingPaper).join(
+        WorkingPaper, WorkingPaperLink.target_wp_id == WorkingPaper.wp_id
+    ).filter(
+        WorkingPaperLink.source_wp_id == wp.wp_id,
+        WorkingPaper.is_deleted == False,
+    ).order_by(WorkingPaper.wp_number).all()
+    return {
+        "data": [
+            WPLinkOut(
+                link_id=link.link_id,
+                source_wp_id=link.source_wp_id,
+                target_wp_id=target.wp_id,
+                target_wp_number=target.wp_number,
+                target_filename=target.filename,
+                created_at=link.created_at,
+            )
+            for link, target in rows
+        ]
+    }
+
+
+@router.post("/wps/{wp_id}/links", status_code=201)
+def create_wp_link(
+    wp_id: str,
+    payload: WPLinkCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    target = db.query(WorkingPaper).filter(
+        WorkingPaper.engagement_id == wp.engagement_id,
+        WorkingPaper.wp_number == payload.target_wp_number.strip(),
+        WorkingPaper.is_deleted == False,
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail={"error": "Target WP index not found in this engagement", "code": "NOT_FOUND"})
+    if target.wp_id == wp.wp_id:
+        raise HTTPException(status_code=400, detail={"error": "A WP cannot link to itself", "code": "SELF_LINK"})
+    existing = db.query(WorkingPaperLink).filter(
+        WorkingPaperLink.source_wp_id == wp.wp_id,
+        WorkingPaperLink.target_wp_id == target.wp_id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail={"error": "This WP link already exists", "code": "DUPLICATE"})
+    link = WorkingPaperLink(source_wp_id=wp.wp_id, target_wp_id=target.wp_id)
+    db.add(link)
+    db.flush()
+    emit_event(db, "wp.linked", current_user.user_id, current_user.full_name,
+               engagement_id=wp.engagement_id, payload={"source_wp_id": wp.wp_id, "target_wp_id": target.wp_id})
+    db.commit()
+    db.refresh(link)
+    return {
+        "data": WPLinkOut(
+            link_id=link.link_id,
+            source_wp_id=link.source_wp_id,
+            target_wp_id=target.wp_id,
+            target_wp_number=target.wp_number,
+            target_filename=target.filename,
+            created_at=link.created_at,
+        ),
+        "message": "Working paper link created",
+    }
+
+
+@router.delete("/wps/{wp_id}/links/{link_id}")
+def delete_wp_link(
+    wp_id: str,
+    link_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    wp = get_wp_or_404(wp_id, db)
+    ensure_engagement_editable(db, wp.engagement_id)
+    link = db.query(WorkingPaperLink).filter(
+        WorkingPaperLink.link_id == link_id,
+        WorkingPaperLink.source_wp_id == wp.wp_id,
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail={"error": "WP link not found", "code": "NOT_FOUND"})
+    db.delete(link)
+    emit_event(db, "wp.link_removed", current_user.user_id, current_user.full_name,
+               engagement_id=wp.engagement_id, payload={"source_wp_id": wp.wp_id, "link_id": link_id})
+    db.commit()
+    return {"data": None, "message": "Working paper link removed"}
+
+
 @router.post("/wps/{wp_id}/signoff", status_code=201)
 def sign_off(
     wp_id: str,
@@ -605,8 +768,13 @@ def sign_off(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
-    if payload.signoff_type in ("Final Reviewer", "Reviewer 1", "Reviewer 2") and current_user.role not in REVIEW_SIGNOFF_ROLES:
+    ensure_engagement_editable(db, wp.engagement_id)
+    ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    engagement_role = get_user_engagement_role(db, wp.engagement_id, current_user)
+    if payload.signoff_type in ("Final Reviewer", "Reviewer 1", "Reviewer 2") and not can_review(engagement_role):
         raise HTTPException(status_code=403, detail={"error": "Only reviewers can sign off as reviewers", "code": "INSUFFICIENT_ROLE"})
+    if payload.signoff_type == "Prepared By" and not can_prepare(engagement_role):
+        raise HTTPException(status_code=403, detail={"error": "Only preparers can sign off as preparer", "code": "INSUFFICIENT_ROLE"})
 
     signoff_initials = display_initials(payload.initials, current_user.initials or current_user.full_name)
 

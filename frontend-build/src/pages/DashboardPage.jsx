@@ -4,7 +4,6 @@ import { engApi } from '../api';
 import { useAuthStore, useAppStore } from '../store';
 import { formatDate, statusBadgeClass, engagementTypeName } from '../utils';
 import { FolderOpen, CheckCircle, Plus, ArrowRight, Building2, CalendarDays, Briefcase } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
   const user = useAuthStore(s => s.user);
@@ -37,7 +36,7 @@ export default function DashboardPage() {
         </div>
         <div className="page-actions">
           {['Audit Manager','Partner','Admin'].includes(user?.role) && (
-            <button className="btn btn-primary" onClick={() => navigate('/engagements/new')}>
+            <button className="btn btn-primary" onClick={() => navigate('/engagements?create=1')}>
               <Plus size={15}/> New Engagement
             </button>
           )}
@@ -64,7 +63,7 @@ export default function DashboardPage() {
           </div>
           <div className="stat-card" style={{ borderLeft:'3px solid var(--brand-gold)' }}>
             <div className="stat-label">Your Role</div>
-            <div style={{ fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:'var(--brand-navy)',marginBottom:4 }}>
+            <div style={{ fontSize:18,fontWeight:700,color:'var(--brand-navy)',marginBottom:4 }}>
               {user?.role}
             </div>
             <div className="stat-sub">ICAI Stage 1 compliant</div>
@@ -87,7 +86,7 @@ export default function DashboardPage() {
               <div className="empty-state-title">No engagements yet</div>
               <div className="empty-state-sub">Create your first audit engagement to get started</div>
               {['Audit Manager','Partner','Admin'].includes(user?.role) && (
-                <button className="btn btn-primary" onClick={() => navigate('/engagements/new')}>
+                <button className="btn btn-primary" onClick={() => navigate('/engagements?create=1')}>
                   <Plus size={14}/> Create Engagement
                 </button>
               )}

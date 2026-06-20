@@ -28,6 +28,7 @@ EVENT_TYPES = {
     "user.deactivated",
     "user.assigned",
     "signoff.recorded",
+    "engagement.workflow_override",
 }
 
 

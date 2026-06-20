@@ -72,12 +72,14 @@ def get_folder_tree(
     sections = db.query(Section).filter(Section.engagement_id == engagement_id).order_by(Section.section_code).all()
 
     tree = {}
+    from app.core.deps import is_section_locked
     for sec in sections:
         sec_folders = [f for f in folders if f.section_id == sec.section_id]
         tree[sec.section_code] = {
             "section_id": sec.section_id,
             "section_code": sec.section_code,
             "section_name": sec.section_name,
+            "locked": is_section_locked(db, engagement_id, sec.section_code),
             "folders": build_folder_tree(sec_folders, wps, None)
         }
     return {"data": tree}
@@ -89,7 +91,15 @@ def create_folder(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if current_user.role == "EQCR Reviewer":
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if eng.status == "Archived":
+        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+
+    from app.core.deps import get_user_engagement_role, is_section_locked
+    eng_role = get_user_engagement_role(db, engagement_id, current_user)
+    if eng_role == "EQCR":
         raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot create folders", "code": "INSUFFICIENT_ROLE"})
 
     section = db.query(Section).filter(Section.section_id == payload.section_id).first()
@@ -97,6 +107,9 @@ def create_folder(
         raise HTTPException(status_code=404, detail={"error": "Section not found", "code": "NOT_FOUND"})
     if section.engagement_id != engagement_id:
         raise HTTPException(status_code=400, detail={"error": "Section does not belong to this engagement", "code": "ENGAGEMENT_MISMATCH"})
+
+    if is_section_locked(db, engagement_id, section.section_code):
+        raise HTTPException(status_code=400, detail={"error": f"Section {section.section_code} is locked due to sequential workflow requirements", "code": "SECTION_LOCKED"})
 
     depth = 1
     parent_wp_number = None
@@ -163,11 +176,23 @@ def rename_folder(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if current_user.role == "EQCR Reviewer":
-        raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot rename folders", "code": "INSUFFICIENT_ROLE"})
     folder = db.query(Folder).filter(Folder.folder_id == folder_id, Folder.is_deleted == False).first()
     if not folder:
         raise HTTPException(status_code=404, detail={"error": "Folder not found", "code": "NOT_FOUND"})
+
+    eng = db.query(Engagement).filter(Engagement.engagement_id == folder.engagement_id).first()
+    if not eng or eng.status == "Archived":
+        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+
+    from app.core.deps import get_user_engagement_role, is_section_locked
+    eng_role = get_user_engagement_role(db, folder.engagement_id, current_user)
+    if eng_role == "EQCR":
+        raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot rename folders", "code": "INSUFFICIENT_ROLE"})
+
+    sec = db.query(Section).filter(Section.section_id == folder.section_id).first()
+    if sec and is_section_locked(db, folder.engagement_id, sec.section_code):
+        raise HTTPException(status_code=400, detail={"error": "Section is locked", "code": "SECTION_LOCKED"})
+
     if payload.folder_name:
         folder.folder_name = payload.folder_name
     if payload.wp_number and payload.wp_number != folder.wp_number:
@@ -188,6 +213,20 @@ def delete_folder(
     folder = db.query(Folder).filter(Folder.folder_id == folder_id, Folder.is_deleted == False).first()
     if not folder:
         raise HTTPException(status_code=404, detail={"error": "Folder not found", "code": "NOT_FOUND"})
+
+    eng = db.query(Engagement).filter(Engagement.engagement_id == folder.engagement_id).first()
+    if not eng or eng.status == "Archived":
+        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+
+    from app.core.deps import get_user_engagement_role, is_section_locked
+    eng_role = get_user_engagement_role(db, folder.engagement_id, current_user)
+    if eng_role == "EQCR":
+        raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot delete folders", "code": "INSUFFICIENT_ROLE"})
+
+    sec = db.query(Section).filter(Section.section_id == folder.section_id).first()
+    if sec and is_section_locked(db, folder.engagement_id, sec.section_code):
+        raise HTTPException(status_code=400, detail={"error": "Section is locked", "code": "SECTION_LOCKED"})
+
     wp_count = db.query(WorkingPaper).filter(
         WorkingPaper.folder_id == folder_id,
         WorkingPaper.is_deleted == False

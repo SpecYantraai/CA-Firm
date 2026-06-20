@@ -22,6 +22,19 @@ def ensure_schema_updates():
             "reviewer2_initials": "VARCHAR(20) NULL",
         },
         "sign_offs": {"initials": "VARCHAR(20) NULL"},
+        "engagements": {
+            "is_small_entity": "TINYINT(1) DEFAULT 0",
+            "workflow_override": "TINYINT(1) DEFAULT 0",
+        },
+        "engagement_users": {
+            "role": "VARCHAR(50) DEFAULT 'Preparer'",
+        },
+        "review_notes": {
+            "response_text": "TEXT NULL",
+            "responded_by": "VARCHAR(36) NULL",
+            "responded_by_name": "VARCHAR(255) NULL",
+            "responded_at": "DATETIME NULL",
+        },
     }
 
     with engine.begin() as conn:
@@ -32,6 +45,15 @@ def ensure_schema_updates():
             for column, ddl in columns.items():
                 if column not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        if "working_paper_links" not in inspector.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE working_paper_links (
+                    link_id VARCHAR(36) PRIMARY KEY,
+                    source_wp_id VARCHAR(36) NOT NULL,
+                    target_wp_id VARCHAR(36) NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
 
 ensure_schema_updates()
 
@@ -118,13 +140,20 @@ def seed_admin():
             db.add(partner)
             db.commit()
             print("✅ Seeded: admin@specentra.com / Admin@123 | partner@specentra.com / Partner@123")
-        else:
-            changed = False
-            for user in db.query(User).filter(User.initials == None).all():
-                user.initials = derive_initials(user.full_name)
-                changed = True
-            if changed:
-                db.commit()
+        client_existing = db.query(User).filter(User.email == "client@specentra.com").first()
+        if not client_existing:
+            client = User(
+                full_name="Login as Client",
+                initials="CLIENT",
+                email="client@specentra.com",
+                hashed_password=hash_password("Client@123"),
+                role="Articled Assistant",
+                must_change_password=False,
+            )
+            db.add(client)
+            db.commit()
+            print("✅ Seeded: client@specentra.com / Client@123")
+
         hide_seeded_template_working_papers(db)
         for eng in db.query(Engagement).filter(Engagement.status != "Archived").all():
             for code in SECTION_CODES:

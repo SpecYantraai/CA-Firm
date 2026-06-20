@@ -4,7 +4,11 @@ import toast from 'react-hot-toast';
 import { authApi } from '../api';
 import { useAuthStore } from '../store';
 import { getErrorMessage } from '../utils';
-import { Brain, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+  ArrowRight, Brain, CheckCircle2, Eye, EyeOff, Lock, Mail,
+  ShieldCheck, Sparkles, Workflow, Zap
+} from 'lucide-react';
+import heroImg from '../assets/hero.png';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -35,39 +39,64 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-shell animate-in">
         <section className="login-hero">
-          <div className="login-ai-mark"><Brain size={28}/></div>
-          <div className="login-kicker"><Sparkles size={14}/> AI based audit workspace</div>
-          <h1>Specentra AI AuditOS</h1>
-          <p>
-            A structured workspace for CA teams to manage engagement-wise files,
-            review notes, signoffs and on-premise audit documentation.
-          </p>
-          <div className="login-hero-grid">
-            <div><ShieldCheck size={18}/><span>Client files isolated by engagement</span></div>
-            <div><Sparkles size={18}/><span>AI-ready audit workflow foundation</span></div>
+          <div className="login-hero-content">
+            <div className="login-kicker"><Sparkles size={14}/> AI-powered audit command centre</div>
+            <h1>Audit files that think with your team.</h1>
+            <p>
+              Specentra AI AuditOS brings engagement files, review notes, sign-offs,
+              roll-forwards and workflow locks into one secure workspace built for modern CA firms.
+            </p>
+
+            <div className="login-ai-panel">
+              <div className="login-ai-panel-head">
+                <div><Brain size={18}/></div>
+                <span>Specentra AI readiness layer</span>
+              </div>
+              <div className="login-ai-row">
+                <CheckCircle2 size={15}/><span>Maps working papers to structured audit phases</span>
+              </div>
+              <div className="login-ai-row">
+                <CheckCircle2 size={15}/><span>Preserves review trails across file replacements</span>
+              </div>
+              <div className="login-ai-row">
+                <CheckCircle2 size={15}/><span>Prepares clean context for future AI audit assistance</span>
+              </div>
+            </div>
+
+            <div className="login-hero-grid">
+              <div><ShieldCheck size={18}/><span>On-premise control</span></div>
+              <div><Workflow size={18}/><span>Sequential audit workflow</span></div>
+              <div><Zap size={18}/><span>Fast roll-forward setup</span></div>
+            </div>
+          </div>
+
+          <div className="login-visual" aria-hidden="true">
+            <img src={heroImg} alt="" />
+            <div className="login-orbit-card card-one">1000 Preconditions</div>
+            <div className="login-orbit-card card-two">AI-ready review trail</div>
+            <div className="login-orbit-card card-three">Partner sign-off</div>
           </div>
         </section>
 
         <div className="login-card">
           <div className="login-logo">
-            <div className="logo-mark" style={{ width:44,height:44,fontSize:22 }}>S</div>
+            <div className="logo-mark" style={{ width:46,height:46,fontSize:22 }}>S</div>
             <div>
               <div className="logo-name" style={{ color:'var(--text-primary)', fontSize:20 }}>Specentra</div>
-              <div className="logo-sub" style={{ color:'var(--text-muted)' }}>Secure CA Workspace</div>
+              <div className="logo-sub" style={{ color:'var(--text-muted)' }}>AI AuditOS</div>
             </div>
           </div>
 
-          <div className="login-heading">Sign in</div>
-          <div className="login-sub">Access your client engagement workspace</div>
+          <div className="login-heading">Welcome back</div>
+          <div className="login-sub">Sign in to continue your intelligent audit workflow.</div>
 
           <form onSubmit={handleLogin} style={{ display:'flex',flexDirection:'column',gap:16 }}>
             <div className="form-group">
               <label className="form-label">Email address</label>
-              <div style={{ position:'relative' }}>
-                <Mail size={15} style={{ position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text-muted)' }} />
+              <div className="login-input-wrap">
+                <Mail size={16}/>
                 <input
                   className="input"
-                  style={{ paddingLeft:36 }}
                   type="email"
                   placeholder="you@firm.com"
                   value={email}
@@ -80,42 +109,35 @@ export default function LoginPage() {
 
             <div className="form-group">
               <label className="form-label">Password</label>
-              <div style={{ position:'relative' }}>
-                <Lock size={15} style={{ position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--text-muted)' }} />
+              <div className="login-input-wrap">
+                <Lock size={16}/>
                 <input
                   className="input"
-                  style={{ paddingLeft:36,paddingRight:40 }}
                   type={showPw ? 'text' : 'password'}
                   placeholder="Enter password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
                 />
-                <button type="button" onClick={() => setShowPw(!showPw)}
-                  style={{ position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',padding:0 }}>
-                  {showPw ? <EyeOff size={15}/> : <Eye size={15}/>}
+                <button type="button" onClick={() => setShowPw(!showPw)} className="login-eye-btn" aria-label={showPw ? 'Hide password' : 'Show password'}>
+                  {showPw ? <EyeOff size={16}/> : <Eye size={16}/>}
                 </button>
               </div>
             </div>
 
-            <div className="login-actions">
-              <button className="btn btn-primary" type="submit" disabled={loading}
-                style={{ minWidth:132,height:42,fontSize:14 }}>
-                {loading ? 'Signing in...' : 'Login'}
-              </button>
-            </div>
+            <button className="btn btn-primary login-submit" type="submit" disabled={loading}>
+              {loading ? 'Signing in...' : 'Enter AuditOS'} {!loading && <ArrowRight size={16}/>}
+            </button>
           </form>
 
-          <div style={{ marginTop:24,padding:'14px 16px',background:'var(--bg-table-head)',borderRadius:'var(--r-md)',fontSize:12 }}>
-            <div style={{ fontWeight:600,color:'var(--text-secondary)',marginBottom:6 }}>Default credentials</div>
-            <div style={{ color:'var(--text-muted)',display:'flex',flexDirection:'column',gap:4 }}>
-              <div><span style={{ fontFamily:'monospace' }}>admin@specentra.com</span> / <span style={{ fontFamily:'monospace' }}>Admin@123</span></div>
-              <div><span style={{ fontFamily:'monospace' }}>partner@specentra.com</span> / <span style={{ fontFamily:'monospace' }}>Partner@123</span></div>
-            </div>
+          <div className="login-demo-box">
+            <div className="login-demo-title">Demo access</div>
+            <div><span>admin@specentra.com</span><strong>Admin@123</strong></div>
+            <div><span>partner@specentra.com</span><strong>Partner@123</strong></div>
           </div>
 
-          <p style={{ textAlign:'center',fontSize:11,color:'var(--text-muted)',marginTop:20 }}>
-            On-premise. Engagement-wise. ICAI-ready.
+          <p className="login-footnote">
+            Secure audit documentation. Smarter review movement. AI-ready by design.
           </p>
         </div>
       </div>

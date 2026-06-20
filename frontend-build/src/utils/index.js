@@ -26,8 +26,20 @@ export const statusBadgeClass = (status) => {
   };
   return map[status] || 'badge badge-navy';
 };
+export const ENGAGEMENT_TYPES = [
+  { value: 'statutory-audit-corporate', label: 'Statutory audit - Corporate' },
+  { value: 'statutory-audit-non-corporate', label: 'Statutory audit - Non corporate' },
+  { value: 'tax-audit', label: 'Tax audit' },
+  { value: 'limited-review', label: 'Limited review' },
+  { value: 'certifications', label: 'Certifications' },
+  { value: 'other-assurance-related', label: 'Other Assurance engagements / Related services' },
+];
 export const engagementTypeName = (type) => {
-  const map = {'statutory-audit':'Statutory Audit','internal-audit':'Internal Audit','tax-audit':'Tax Audit','limited-review':'Limited Review'};
+  const map = {
+    'statutory-audit': 'Statutory audit - Corporate',
+    'internal-audit': 'Other Assurance engagements / Related services',
+    ...Object.fromEntries(ENGAGEMENT_TYPES.map(t => [t.value, t.label])),
+  };
   return map[type] || type;
 };
 export const downloadBlob = (blob, filename) => {

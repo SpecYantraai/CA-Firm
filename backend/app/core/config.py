@@ -66,3 +66,158 @@ CLOSURE_CHECKLIST = [
     {"item_id": "CL-E001", "section_code": None, "description": "All review notes across the engagement are closed", "check_type": "no_open_notes"},
     {"item_id": "CL-E002", "section_code": None, "description": "Partner final sign-off is recorded on at least one WP in each section", "check_type": "partner_signoff"},
 ]
+
+ENGAGEMENT_TYPES = {
+    "statutory-audit-corporate": "Statutory audit – Corporate",
+    "statutory-audit-non-corporate": "Statutory audit – Non corporate",
+    "tax-audit": "Tax audit",
+    "limited-review": "Limited review",
+    "certifications": "Certifications",
+    "other-assurance-related": "Other Assurance engagements/Related services"
+}
+
+ENGAGEMENT_SPECS = {
+    "statutory-audit-corporate": {
+        "1000": [
+            ("1001", "SA 200 WPs"),
+            ("1002", "SA 210 WPs"),
+            ("1003", "SA 220 WPs"),
+            ("1004", "SA 240 WPs"),
+            ("1005", "SA 250 WPs"),
+        ],
+        "2000": [
+            ("2001", "Audit planning templates"),
+            ("2020.03A", "Questionnaires"),
+            ("2030", "Subsequent period PL"),
+        ],
+        "4000": [
+            ("4001", "Assets"),
+            ("4002", "Equity"),
+            ("4003", "Expenditure"),
+            ("4004", "Liabilities"),
+            ("4005", "Misc"),
+            ("4006", "Revenue"),
+        ],
+        "5000": [
+            ("5001", "Financial statements"),
+            ("5002", "Notes to accounts"),
+            ("5003", "Audit reports"),
+            ("5004", "Tax audit statements"),
+        ],
+    },
+    "statutory-audit-non-corporate": {
+        "1000": [
+            ("1001", "SA 200 WPs"),
+            ("1002", "SA 210 WPs"),
+            ("1003", "SA 220 WPs"),
+            ("1004", "SA 240 WPs"),
+            ("1005", "SA 250 WPs"),
+        ],
+        "2000": [
+            ("2001", "Audit planning templates"),
+            ("2020.03A", "Questionnaires"),
+        ],
+        "4000": [
+            ("4001", "Assets"),
+            ("4002", "Equity/Capital"),
+            ("4003", "Expenditure"),
+            ("4004", "Liabilities"),
+            ("4005", "Misc"),
+            ("4006", "Revenue"),
+        ],
+        "5000": [
+            ("5001", "Financial statements"),
+            ("5002", "Notes to accounts"),
+            ("5003", "Audit reports"),
+        ],
+    },
+    "tax-audit": {
+        "1000": [
+            ("1001", "Client Acceptance"),
+            ("1002", "Engagement Letter"),
+            ("1003", "Independence Declaration"),
+        ],
+        "2000": [
+            ("2001", "Tax Audit Planning"),
+            ("2002", "Materiality & Sampling"),
+        ],
+        "4000": [
+            ("4001", "Form 3CD Verification"),
+            ("4002", "Income Computation"),
+            ("4003", "TDS Verification"),
+            ("4004", "Depreciation Verification"),
+            ("4005", "Other Execution WPs"),
+        ],
+        "5000": [
+            ("5001", "Form 3CA / 3CB"),
+            ("5002", "Form 3CD Draft"),
+            ("5003", "Final Tax Audit Report"),
+        ],
+    },
+    "limited-review": {
+        "1000": [
+            ("1001", "Terms of Engagement"),
+            ("1002", "Independence Declaration"),
+        ],
+        "2000": [
+            ("2001", "Review Strategy & Planning"),
+            ("2002", "Analytical Procedures Design"),
+        ],
+        "4000": [
+            ("4001", "Inquiries & Analytical Procedures"),
+            ("4002", "Review Workings"),
+        ],
+        "5000": [
+            ("5001", "Draft Review Report"),
+            ("5002", "Final Review Report"),
+        ],
+    },
+    "certifications": {
+        "1000": [
+            ("1001", "Certificate Request & Acceptance"),
+        ],
+        "2000": [
+            ("2001", "Verification Plan"),
+        ],
+        "4000": [
+            ("4001", "Supporting Documents & Verification"),
+        ],
+        "5000": [
+            ("5001", "Certificates Issued"),
+        ],
+    },
+    "other-assurance-related": {
+        "1000": [
+            ("1001", "Engagement Acceptance & Terms"),
+        ],
+        "2000": [
+            ("2001", "Planning & Procedures"),
+        ],
+        "4000": [
+            ("4001", "Execution & Workings"),
+        ],
+        "5000": [
+            ("5001", "Draft & Final Reports"),
+        ],
+    },
+}
+
+def get_folders_for_engagement(engagement_type: str, is_small_entity: bool) -> dict:
+    spec = ENGAGEMENT_SPECS.get(engagement_type, ENGAGEMENT_SPECS["statutory-audit-corporate"])
+    if not is_small_entity:
+        return spec
+    simplified = {}
+    for sec, folders in spec.items():
+        if engagement_type in ("statutory-audit-corporate", "statutory-audit-non-corporate"):
+            if sec == "1000":
+                simplified[sec] = [f for f in folders if f[0] in ("1001", "1002")]
+            elif sec == "2000":
+                simplified[sec] = [f for f in folders if f[0] == "2001"]
+            elif sec == "5000":
+                simplified[sec] = [f for f in folders if f[0] in ("5001", "5003")]
+            else:
+                simplified[sec] = folders
+        else:
+            simplified[sec] = folders
+    return simplified
+

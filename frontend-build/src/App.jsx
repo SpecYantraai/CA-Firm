@@ -32,7 +32,7 @@ export default function App() {
         position="top-right"
         toastOptions={{
           duration: 3500,
-          style: { fontFamily:"'DM Sans',sans-serif",fontSize:13,borderRadius:8,boxShadow:'0 4px 16px rgba(15,30,56,0.15)' },
+          style: { fontFamily:"'Inter',system-ui,sans-serif",fontSize:13,borderRadius:8,boxShadow:'0 4px 16px rgba(15,30,56,0.15)' },
           success: { iconTheme: { primary:'#1a9e5e',secondary:'#fff' } },
           error: { iconTheme: { primary:'#d03545',secondary:'#fff' } },
         }}

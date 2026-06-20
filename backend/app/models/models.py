@@ -34,9 +34,11 @@ class Engagement(Base):
     engagement_id = Column(String(36), primary_key=True, default=gen_uuid)
     client_name = Column(String(255), nullable=False, index=True)
     financial_year = Column(String(20), nullable=False)
-    engagement_type = Column(String(100), default="statutory-audit")
+    engagement_type = Column(String(100), default="statutory-audit-corporate")
     status = Column(String(20), default="Active")
     is_eqcr_designated = Column(Boolean, default=False)
+    is_small_entity = Column(Boolean, default=False)
+    workflow_override = Column(Boolean, default=False)
     eqcr_reviewer_id = Column(String(36), nullable=True)
     prior_year_engagement_id = Column(String(36), nullable=True)
     created_by = Column(String(36), ForeignKey("users.user_id"), nullable=False)
@@ -52,6 +54,7 @@ class EngagementUser(Base):
     id = Column(String(36), primary_key=True, default=gen_uuid)
     engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.user_id"), nullable=False)
+    role = Column(String(50), default="Preparer")
     assigned_at = Column(DateTime, server_default=func.now())
     assigned_by = Column(String(36), nullable=True)
 
@@ -132,6 +135,10 @@ class ReviewNote(Base):
     closed_by = Column(String(36), nullable=True)
     closed_by_name = Column(String(255), nullable=True)
     closed_at = Column(DateTime, nullable=True)
+    response_text = Column(Text, nullable=True)
+    responded_by = Column(String(36), nullable=True)
+    responded_by_name = Column(String(255), nullable=True)
+    responded_at = Column(DateTime, nullable=True)
 
 class SignOff(Base):
     __tablename__ = "sign_offs"
@@ -154,3 +161,10 @@ class EventLog(Base):
     actor_name = Column(String(255))
     engagement_id = Column(String(36), nullable=True)
     payload = Column(JSON, nullable=True)
+
+class WorkingPaperLink(Base):
+    __tablename__ = "working_paper_links"
+    link_id = Column(String(36), primary_key=True, default=gen_uuid)
+    source_wp_id = Column(String(36), ForeignKey("working_papers.wp_id"), nullable=False)
+    target_wp_id = Column(String(36), ForeignKey("working_papers.wp_id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())

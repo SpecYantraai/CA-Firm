@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.core.security import hash_password, generate_temp_password
 from app.core.deps import get_current_user, require_roles
 from app.models.models import User, EngagementUser, Engagement
-from app.schemas.schemas import UserCreate, UserOut
+from app.schemas.schemas import UserCreate, UserOut, EngagementUserAssign, EngagementUserOut
 from app.services.events import emit_event
 from app.services.initials import derive_initials
 
@@ -48,6 +48,7 @@ def create_user(
             eu = EngagementUser(
                 engagement_id=eng.engagement_id,
                 user_id=user.user_id,
+                role="Reviewer",
                 assigned_by=current_user.user_id
             )
             db.add(eu)
@@ -84,25 +85,64 @@ def deactivate_user(
 @router.post("/{engagement_id}/assign")
 def assign_user_to_engagement(
     engagement_id: str,
-    payload: dict,
+    payload: EngagementUserAssign,
     current_user: User = Depends(require_roles("Audit Manager", "Partner", "Admin")),
     db: Session = Depends(get_db)
 ):
-    user_id = payload.get("user_id")
+    if payload.role not in ("Preparer", "Reviewer", "EQCR"):
+        raise HTTPException(status_code=400, detail={"error": "Engagement role must be Preparer, Reviewer or EQCR", "code": "INVALID_ROLE"})
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if eng.status == "Archived":
+        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+    user = db.query(User).filter(User.user_id == payload.user_id, User.is_active == True).first()
+    if not user:
+        raise HTTPException(status_code=404, detail={"error": "User not found", "code": "NOT_FOUND"})
+
     existing = db.query(EngagementUser).filter(
         EngagementUser.engagement_id == engagement_id,
-        EngagementUser.user_id == user_id
+        EngagementUser.user_id == payload.user_id
     ).first()
     if existing:
-        return {"data": None, "message": "User already assigned"}
+        existing.role = payload.role
+        emit_event(db, "user.assignment_updated", current_user.user_id, current_user.full_name,
+                   engagement_id=engagement_id, payload={"user_id": payload.user_id, "role": payload.role})
+        db.commit()
+        return {"data": None, "message": "Assignment role updated"}
 
     eu = EngagementUser(
         engagement_id=engagement_id,
-        user_id=user_id,
+        user_id=payload.user_id,
+        role=payload.role,
         assigned_by=current_user.user_id
     )
     db.add(eu)
     emit_event(db, "user.assigned", current_user.user_id, current_user.full_name,
-               engagement_id=engagement_id, payload={"user_id": user_id})
+               engagement_id=engagement_id, payload={"user_id": payload.user_id, "role": payload.role})
     db.commit()
     return {"data": None, "message": "User assigned to engagement"}
+
+@router.get("/{engagement_id}/assignments", response_model=list[EngagementUserOut])
+def list_engagement_assignments(
+    engagement_id: str,
+    current_user: User = Depends(require_roles("Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    rows = db.query(EngagementUser, User).join(User, EngagementUser.user_id == User.user_id).filter(
+        EngagementUser.engagement_id == engagement_id
+    ).order_by(User.full_name).all()
+    return [
+        EngagementUserOut(
+            id=eu.id,
+            engagement_id=eu.engagement_id,
+            user_id=user.user_id,
+            full_name=user.full_name,
+            email=user.email,
+            initials=user.initials,
+            system_role=user.role,
+            engagement_role=eu.role or "Preparer",
+            assigned_at=eu.assigned_at,
+        )
+        for eu, user in rows
+    ]

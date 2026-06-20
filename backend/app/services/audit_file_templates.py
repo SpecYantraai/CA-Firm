@@ -8,8 +8,8 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.models.models import FileVersion, Folder, Section, WorkingPaper
+from app.core.config import settings, get_folders_for_engagement
+from app.models.models import FileVersion, Folder, Section, WorkingPaper, Engagement
 from app.services.numbering import assign_wp_number, check_wp_number_conflict
 
 
@@ -54,13 +54,19 @@ def create_standard_audit_file(
     created_by: str | None = None,
     seed_templates: bool = False,
 ) -> None:
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        return
+
     sections = {
         sec.section_code: sec
         for sec in db.query(Section).filter(Section.engagement_id == engagement_id).all()
     }
 
+    folders_to_create = get_folders_for_engagement(eng.engagement_type, eng.is_small_entity)
+
     folder_by_key: dict[tuple[str, str, str | None], Folder] = {}
-    for section_code, folders in STANDARD_FOLDERS.items():
+    for section_code, folders in folders_to_create.items():
         section = sections.get(section_code)
         if not section:
             continue
@@ -149,8 +155,14 @@ def _seed_1000_templates(
     if not section or not source_root.exists():
         return
 
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    folders_to_create = get_folders_for_engagement(eng.engagement_type, eng.is_small_entity) if eng else {}
+    allowed_folders = {name for _, name in folders_to_create.get("1000", [])}
+
     for sa_folder in source_root.iterdir():
         if not sa_folder.is_dir():
+            continue
+        if sa_folder.name not in allowed_folders:
             continue
         parent = folder_by_key.get(("1000", sa_folder.name, None))
         if not parent:
@@ -172,6 +184,12 @@ def _seed_2000_templates(
     section = sections.get("2000")
     source_root = TEMPLATE_ROOT / "2000" / "Sample 2000 series WPs"
     if not section or not source_root.exists():
+        return
+
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    folders_to_create = get_folders_for_engagement(eng.engagement_type, eng.is_small_entity) if eng else {}
+    allowed_folders = {name for _, name in folders_to_create.get("2000", [])}
+    if "Audit planning templates" not in allowed_folders:
         return
 
     parent = folder_by_key.get(("2000", "Audit planning templates", None))

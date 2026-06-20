@@ -23,7 +23,8 @@ export const engApi = {
   create: (data) => api.post('/engagements', data),
   archive: (id) => api.patch(`/engagements/${id}/archive`),
   reopen: (id) => api.patch(`/engagements/${id}/reopen`),
-  rollforward: (id, new_financial_year) => api.post(`/engagements/${id}/rollforward`, { new_financial_year }),
+  rollforward: (id, data) => api.post(`/engagements/${id}/rollforward`, data),
+  toggleWorkflowOverride: (id) => api.patch(`/engagements/${id}/toggle-workflow-override`),
   closureChecklist: (id) => api.get(`/engagements/${id}/closure-checklist`),
   events: (id) => api.get(`/engagements/${id}/events`),
 };
@@ -48,14 +49,19 @@ export const wpApi = {
   finalise: (wp_id) => api.post(`/wps/${wp_id}/finalise`),
   getNotes: (wp_id) => api.get(`/wps/${wp_id}/notes`),
   raiseNote: (wp_id, note_text) => api.post(`/wps/${wp_id}/notes`, { note_text }),
+  respondNote: (note_id, response_text) => api.patch(`/notes/${note_id}/respond`, { response_text }),
   closeNote: (note_id) => api.patch(`/notes/${note_id}/close`),
   signoff: (wp_id, data) => api.post(`/wps/${wp_id}/signoff`, data),
+  links: (wp_id) => api.get(`/wps/${wp_id}/links`),
+  createLink: (wp_id, target_wp_number) => api.post(`/wps/${wp_id}/links`, { target_wp_number }),
+  deleteLink: (wp_id, link_id) => api.delete(`/wps/${wp_id}/links/${link_id}`),
 };
 export const userApi = {
   list: () => api.get('/users'),
   create: (data) => api.post('/users', data),
   deactivate: (user_id) => api.patch(`/users/${user_id}/deactivate`),
-  assign: (engagement_id, user_id) => api.post(`/users/${engagement_id}/assign`, { user_id }),
+  assign: (engagement_id, user_id, role = 'Preparer') => api.post(`/users/${engagement_id}/assign`, { user_id, role }),
+  assignments: (engagement_id) => api.get(`/users/${engagement_id}/assignments`),
 };
 export const searchApi = {
   search: (params) => api.get('/search', { params }),

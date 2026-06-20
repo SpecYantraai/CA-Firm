@@ -1,12 +1,13 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { engApi, folderApi, wpApi } from '../api';
+import { engApi, folderApi, userApi } from '../api';
 import { useAuthStore, useAppStore } from '../store';
-import { formatDate, statusBadgeClass, getErrorMessage, formatBytes } from '../utils';
+import { statusBadgeClass, getErrorMessage } from '../utils';
 import {
   ChevronDown, ChevronRight, Folder, FolderOpen, FileText,
   Upload, Plus, RotateCcw, Archive, CheckSquare, Activity,
-  X, Edit2, Trash2, Download, Eye, MessageSquare, MoreHorizontal
+  Lock, Unlock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WPDetailPanel from '../components/wps/WPDetailPanel';
@@ -15,14 +16,12 @@ import CreateFolderModal from '../components/folders/CreateFolderModal';
 import ClosureChecklistModal from '../components/closure/ClosureChecklistModal';
 import RollForwardModal from '../components/engagements/RollForwardModal';
 
-const SECTION_COLORS = {};
-
-function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, archived }) {
+function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, archived, locked }) {
   const [open, setOpen] = useState(depth === 0);
   const [showUpload, setShowUpload] = useState(false);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const user = useAuthStore(s => s.user);
-  const canUpload = !archived && !['EQCR Reviewer'].includes(user?.role);
+  const canUpload = !archived && !locked && !['EQCR Reviewer'].includes(user?.role);
 
   const indent = depth * 20;
 
@@ -81,12 +80,12 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
           {/* Sub-folders */}
           {folder.children?.map(child => (
             <FolderNode key={child.folder_id} folder={child} depth={depth + 1}
-              engagementId={engagementId} onSelectWP={onSelectWP} onRefresh={onRefresh} archived={archived}/>
+              engagementId={engagementId} onSelectWP={onSelectWP} onRefresh={onRefresh} archived={archived} locked={locked}/>
           ))}
           {/* WPs in this folder */}
           {folder.working_papers?.map(wp => (
             <WPRow key={wp.wp_id} wp={wp} indent={indent + 20}
-              onSelect={() => onSelectWP(wp)} archived={archived}/>
+              onSelect={() => onSelectWP(wp)}/>
           ))}
           {folder.children?.length === 0 && folder.working_papers?.length === 0 && (
             <div style={{ paddingLeft: 14 + indent + 20, padding:'6px 0 6px ' + (14 + indent + 36) + 'px', fontSize:11, color:'var(--text-muted)' }}>
@@ -99,7 +98,7 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
   );
 }
 
-function WPRow({ wp, indent, onSelect, archived }) {
+function WPRow({ wp, indent, onSelect }) {
   const statusColors = {
     'Draft': 'var(--text-muted)', 'Submitted': 'var(--blue)',
     'Under Review': 'var(--amber)', 'Review Notes Raised': 'var(--red)', 'Finalised': 'var(--green)'
@@ -160,7 +159,20 @@ export default function EngagementDetailPage() {
 
   const archived = engagement?.status === 'Archived';
   const isPartner = user?.role === 'Partner';
+  const isPartnerOrAdmin = ['Partner', 'Admin'].includes(user?.role);
+  const canManageTeam = ['Audit Manager', 'Partner', 'Admin'].includes(user?.role);
   const canCreateFolder = !archived && !['EQCR Reviewer'].includes(user?.role);
+
+  const toggleWorkflowOverride = async () => {
+    try {
+      const res = await engApi.toggleWorkflowOverride(id);
+      setEngagement(res.data.data);
+      toast.success(res.data.message || 'Workflow override updated');
+      load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
 
   if (loading) return (
     <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'var(--text-muted)' }}>
@@ -203,9 +215,17 @@ export default function EngagementDetailPage() {
             <span style={{ fontFamily:'monospace',fontSize:12,color:'var(--text-secondary)' }}>FY {engagement?.financial_year}</span>
             <span className={statusBadgeClass(engagement?.status)}>{engagement?.status}</span>
             {engagement?.is_eqcr_designated && <span className="badge badge-purple">EQCR</span>}
+            {engagement?.is_small_entity && <span className="badge badge-blue">Small entity</span>}
+            {engagement?.workflow_override && <span className="badge badge-amber">Workflow override</span>}
           </div>
         </div>
         <div className="page-actions">
+          {isPartnerOrAdmin && !archived && (
+            <button className={`btn btn-sm ${engagement?.workflow_override ? 'btn-navy' : 'btn-outline'}`} onClick={toggleWorkflowOverride}>
+              {engagement?.workflow_override ? <Unlock size={14}/> : <Lock size={14}/>}
+              {engagement?.workflow_override ? 'Override On' : 'Override Locks'}
+            </button>
+          )}
           {isPartner && !archived && (
             <button className="btn btn-outline btn-sm" onClick={() => setShowClosure(true)}>
               <CheckSquare size={14}/> Close Engagement
@@ -219,7 +239,7 @@ export default function EngagementDetailPage() {
               <RotateCcw size={14}/> Reopen
             </button>
           )}
-          {['Audit Manager','Partner'].includes(user?.role) && (
+          {isPartnerOrAdmin && (
             <button className="btn btn-outline btn-sm" onClick={() => setShowRollForward(true)}>
               <RotateCcw size={14}/> Roll Forward
             </button>
@@ -233,10 +253,10 @@ export default function EngagementDetailPage() {
       {/* Tabs */}
       <div style={{ background:'var(--bg-card)',borderBottom:'1px solid var(--border)',paddingLeft:28,flexShrink:0 }}>
         <div className="tabs" style={{ borderBottom:'none' }}>
-          {['files','activity'].map(tab => (
+          {['files', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`}
               onClick={() => setActiveTab(tab)}>
-              {tab === 'files' ? 'File Explorer' : 'Activity Log'}
+              {tab === 'files' ? 'File Explorer' : tab === 'people' ? 'People' : 'Activity Log'}
             </button>
           ))}
         </div>
@@ -261,7 +281,6 @@ export default function EngagementDetailPage() {
                       key={code}
                       code={code}
                       section={section}
-                      color={SECTION_COLORS[code]}
                       engagementId={id}
                       onSelectWP={setSelectedWP}
                       onRefresh={load}
@@ -293,12 +312,114 @@ export default function EngagementDetailPage() {
         {activeTab === 'activity' && (
           <ActivityLog engagementId={id}/>
         )}
+
+        {activeTab === 'people' && (
+          <PeoplePanel engagementId={id} archived={archived}/>
+        )}
       </div>
     </div>
   );
 }
 
-function SectionBlock({ code, section, color, engagementId, onSelectWP, onRefresh, archived, canCreateFolder, onCreateFolderInSection }) {
+function PeoplePanel({ engagementId, archived }) {
+  const [users, setUsers] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [form, setForm] = useState({ user_id: '', role: 'Preparer' });
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [usersRes, assignmentsRes] = await Promise.all([
+        userApi.list(),
+        userApi.assignments(engagementId),
+      ]);
+      setUsers(usersRes.data || []);
+      setAssignments(assignmentsRes.data || []);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [engagementId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.user_id) return;
+    try {
+      await userApi.assign(engagementId, form.user_id, form.role);
+      toast.success('User assignment saved');
+      setForm({ user_id: '', role: 'Preparer' });
+      load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
+      <div className="card" style={{ marginBottom:16 }}>
+        <div className="card-header">
+          <div>
+            <div className="card-title">Engagement Team</div>
+            <div className="text-sm text-secondary">Assign users as Preparer, Reviewer, or EQCR for this engagement.</div>
+          </div>
+        </div>
+        {!archived && (
+          <form className="card-body" onSubmit={submit}>
+            <div className="form-row" style={{ alignItems:'end' }}>
+              <div className="form-group">
+                <label className="form-label">User</label>
+                <select className="select" value={form.user_id} onChange={e => setForm({...form, user_id:e.target.value})}>
+                  <option value="">Select user</option>
+                  {users.filter(u => u.is_active).map(u => (
+                    <option key={u.user_id} value={u.user_id}>{u.full_name} ({u.initials || u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Engagement Role</label>
+                <select className="select" value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
+                  <option>Preparer</option>
+                  <option>Reviewer</option>
+                  <option>EQCR</option>
+                </select>
+              </div>
+              <button className="btn btn-primary" type="submit" disabled={!form.user_id}>Assign</button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ color:'var(--text-muted)',fontSize:13 }}>Loading team...</div>
+      ) : assignments.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-title">No assigned users</div>
+        </div>
+      ) : (
+        <div className="people-grid">
+          {assignments.map(item => (
+            <div className="person-row" key={item.id}>
+              <div className="user-avatar">{item.initials || '?'}</div>
+              <div className="person-main">
+                <div className="person-name">{item.full_name}</div>
+                <div className="person-meta">{item.email} | {item.system_role}</div>
+              </div>
+              <span className={`badge ${item.engagement_role === 'EQCR' ? 'badge-purple' : item.engagement_role === 'Reviewer' ? 'badge-blue' : 'badge-green'}`}>
+                {item.engagement_role}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionBlock({ code, section, engagementId, onSelectWP, onRefresh, archived, canCreateFolder, onCreateFolderInSection }) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -306,7 +427,12 @@ function SectionBlock({ code, section, color, engagementId, onSelectWP, onRefres
       <div className="tree-section-header" onClick={() => setOpen(!open)}>
         <span className="tree-section-code">{code}</span>
         <span className="tree-section-name">{section.section_name}</span>
-        {canCreateFolder && open && (
+        {section.locked && (
+          <span className="badge badge-amber" title="Locked by sequential workflow">
+            <Lock size={11}/> Locked
+          </span>
+        )}
+        {canCreateFolder && !section.locked && open && (
           <button className="btn btn-icon-sm btn-ghost"
             title="New folder in section" onClick={(e) => { e.stopPropagation(); onCreateFolderInSection(); }}>
             <Plus size={12}/>
@@ -331,6 +457,7 @@ function SectionBlock({ code, section, color, engagementId, onSelectWP, onRefres
                 onSelectWP={onSelectWP}
                 onRefresh={onRefresh}
                 archived={archived}
+                locked={section.locked}
               />
             ))
           )}
@@ -367,7 +494,7 @@ function ActivityLog({ engagementId }) {
 
   return (
     <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:700, marginBottom:16 }}>Activity Log</div>
+      <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>Activity Log</div>
       {loading ? (
         <div style={{ color:'var(--text-muted)',fontSize:13 }}>Loading…</div>
       ) : events.length === 0 ? (

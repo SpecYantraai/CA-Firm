@@ -26,7 +26,7 @@ def wp_to_out(wp):
         final_reviewed_at=wp.final_reviewed_at,
         current_version=wp.current_version, is_deleted=wp.is_deleted,
         created_at=wp.created_at, updated_at=wp.updated_at,
-        open_notes_count=sum(1 for n in wp.review_notes if n.status == "Open")
+        open_notes_count=sum(1 for n in wp.review_notes if n.status != "Closed")
     )
 
 @router.get("/search", response_model=dict)
@@ -95,7 +95,7 @@ def get_closure_checklist(
     ).all()
     open_notes_count = db.query(ReviewNote).filter(
         ReviewNote.engagement_id == engagement_id,
-        ReviewNote.status == "Open"
+        ReviewNote.status != "Closed"
     ).count()
 
     items = []

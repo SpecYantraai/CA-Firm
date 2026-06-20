@@ -1,10 +1,12 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import { useEffect, useState } from 'react';
 import { wpApi } from '../../api';
 import { useAuthStore } from '../../store';
 import { formatDate, formatDateTime, formatBytes, getErrorMessage, downloadBlob } from '../../utils';
 import {
-  X, Download, Upload, MessageSquare, CheckCircle, Clock, History,
-  FileSignature, Send, AlertCircle, RotateCcw, Check, FileText, PencilLine
+  X, Download, Upload, MessageSquare, Clock,
+  FileSignature, Send, AlertCircle, Check, FileText, PencilLine,
+  Link2, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -13,13 +15,16 @@ const STATUS_COLOR = {
   'Under Review': 'var(--amber)', 'Review Notes Raised': 'var(--red)', 'Finalised': 'var(--green)'
 };
 
-export default function WPDetailPanel({ wp: initialWP, engagementId, archived, onClose, onRefresh }) {
+export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefresh }) {
   const user = useAuthStore(s => s.user);
   const [wp, setWP] = useState(initialWP);
   const [tab, setTab] = useState('preview');
   const [notes, setNotes] = useState([]);
   const [versions, setVersions] = useState([]);
+  const [links, setLinks] = useState([]);
   const [noteText, setNoteText] = useState('');
+  const [noteResponses, setNoteResponses] = useState({});
+  const [linkTarget, setLinkTarget] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewError, setPreviewError] = useState('');
   const [editorInfo, setEditorInfo] = useState(null);
@@ -33,7 +38,6 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
   });
   const [loading, setLoading] = useState(false);
 
-  const isOwner = wp.prepared_by_name === user?.full_name;
   const canRaiseNote = !archived && ['Audit Executive','Audit Manager','Partner','EQCR Reviewer'].includes(user?.role);
   const canFinalise = !archived && ['Partner','Audit Manager'].includes(user?.role);
   const canSubmit = !archived && ['Articled Assistant','Audit Executive'].includes(user?.role);
@@ -53,23 +57,21 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
   }, [initialWP]);
 
   useEffect(() => {
-    if (tab === 'notes') loadNotes();
-    if (tab === 'versions') loadVersions();
-    if (tab === 'preview') loadViewer();
-  }, [tab, wp.wp_id]);
-
-  useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
   const loadNotes = async () => {
-    try { const r = await wpApi.getNotes(wp.wp_id); setNotes(r.data.data || []); } catch {}
+    try { const r = await wpApi.getNotes(wp.wp_id); setNotes(r.data.data || []); } catch { /* keep panel usable */ }
   };
 
   const loadVersions = async () => {
-    try { const r = await wpApi.versions(wp.wp_id); setVersions(r.data.data || []); } catch {}
+    try { const r = await wpApi.versions(wp.wp_id); setVersions(r.data.data || []); } catch { /* keep panel usable */ }
+  };
+
+  const loadLinks = async () => {
+    try { const r = await wpApi.links(wp.wp_id); setLinks(r.data.data || []); } catch { /* keep panel usable */ }
   };
 
   const loadViewer = async () => {
@@ -95,6 +97,13 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
       setViewerLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (tab === 'notes') loadNotes();
+    if (tab === 'versions') loadVersions();
+    if (tab === 'links') loadLinks();
+    if (tab === 'preview') loadViewer();
+  }, [tab, wp.wp_id]);
 
   const handleDownload = async () => {
     try {
@@ -141,6 +150,40 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
       toast.success('Note closed');
       loadNotes();
       onRefresh();
+    } catch (err) { toast.error(getErrorMessage(err)); }
+  };
+
+  const handleRespondNote = async (noteId) => {
+    const response = (noteResponses[noteId] || '').trim();
+    if (!response) return;
+    setLoading(true);
+    try {
+      await wpApi.respondNote(noteId, response);
+      setNoteResponses({ ...noteResponses, [noteId]: '' });
+      toast.success('Response submitted for re-review');
+      loadNotes();
+      onRefresh();
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setLoading(false); }
+  };
+
+  const handleCreateLink = async () => {
+    if (!linkTarget.trim()) return;
+    setLoading(true);
+    try {
+      await wpApi.createLink(wp.wp_id, linkTarget.trim());
+      setLinkTarget('');
+      toast.success('Working paper linked');
+      loadLinks();
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setLoading(false); }
+  };
+
+  const handleDeleteLink = async (linkId) => {
+    try {
+      await wpApi.deleteLink(wp.wp_id, linkId);
+      toast.success('Link removed');
+      loadLinks();
     } catch (err) { toast.error(getErrorMessage(err)); }
   };
 
@@ -200,6 +243,7 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
     { id: 'preview', label: 'Preview/Edit' },
     { id: 'info', label: 'Info' },
     { id: 'notes', label: `Notes${wp.open_notes_count > 0 ? ` (${wp.open_notes_count})` : ''}` },
+    { id: 'links', label: 'Links' },
     { id: 'versions', label: 'Versions' },
   ];
 
@@ -394,10 +438,60 @@ export default function WPDetailPanel({ wp: initialWP, engagementId, archived, o
                   )}
                 </div>
                 <p className="note-text">{note.note_text}</p>
+                {note.response_text && (
+                  <div className="note-response">
+                    <div className="note-meta">Response by {note.responded_by_name || 'Preparer'} on {formatDateTime(note.responded_at)}</div>
+                    <div className="note-text">{note.response_text}</div>
+                  </div>
+                )}
+                {note.status === 'Open' && !archived && canUploadNew && (
+                  <div style={{ marginTop:10 }}>
+                    <textarea className="textarea" placeholder="Respond and submit for re-review..."
+                      value={noteResponses[note.note_id] || ''}
+                      onChange={e => setNoteResponses({ ...noteResponses, [note.note_id]: e.target.value })}
+                      style={{ minHeight:60, marginBottom:8 }}/>
+                    <button className="btn btn-outline btn-sm" onClick={() => handleRespondNote(note.note_id)}
+                      disabled={loading || !(noteResponses[note.note_id] || '').trim()}>
+                      <Send size={13}/> Submit Response
+                    </button>
+                  </div>
+                )}
                 <div className="note-meta" style={{ marginTop:6 }}>
                   {formatDateTime(note.raised_at)}
                   {note.closed_at && ` · Closed by ${note.closed_by_name} on ${formatDate(note.closed_at)}`}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'links' && (
+          <div>
+            {!archived && (
+              <div className="link-create-row">
+                <input className="input font-mono" placeholder="Target WP index, e.g. 4001.1.1"
+                  value={linkTarget} onChange={e => setLinkTarget(e.target.value)}/>
+                <button className="btn btn-primary btn-sm" onClick={handleCreateLink} disabled={loading || !linkTarget.trim()}>
+                  <Link2 size={13}/> Link WP
+                </button>
+              </div>
+            )}
+            {links.length === 0 ? (
+              <div className="empty-state" style={{ padding:24 }}>
+                <div className="empty-state-icon"><Link2 size={20}/></div>
+                <div className="empty-state-title">No linked WPs</div>
+              </div>
+            ) : links.map(link => (
+              <div key={link.link_id} className="linked-wp-row">
+                <div className="linked-wp-main">
+                  <span className="wp-number">{link.target_wp_number}</span>
+                  <span className="wp-name">{link.target_filename}</span>
+                </div>
+                {!archived && (
+                  <button className="btn btn-icon-sm btn-ghost" title="Remove link" onClick={() => handleDeleteLink(link.link_id)}>
+                    <Trash2 size={13}/>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -537,7 +631,7 @@ function OnlyOfficeEditor({ editorInfo, wp }) {
 
     return () => {
       cancelled = true;
-      try { editor?.destroyEditor?.(); } catch {}
+      try { editor?.destroyEditor?.(); } catch { /* editor cleanup is best-effort */ }
     };
   }, [editorId, editorInfo]);
 
