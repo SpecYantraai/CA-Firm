@@ -3,8 +3,7 @@ import { useAuthStore, useAppStore } from '../../store';
 import { initials } from '../../utils';
 import toast from 'react-hot-toast';
 import {
-  LayoutDashboard, FolderOpen, Search, Users,
-  Settings, LogOut, ChevronRight, FileText, BarChart2, Archive
+  LayoutDashboard, FolderOpen, Search, Users, LogOut, Settings
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -15,6 +14,7 @@ const NAV_ITEMS = [
 
 const ADMIN_ITEMS = [
   { label: 'Users', icon: Users, to: '/users' },
+  { label: 'Settings', icon: Settings, to: '/settings' },
 ];
 
 export default function Sidebar() {

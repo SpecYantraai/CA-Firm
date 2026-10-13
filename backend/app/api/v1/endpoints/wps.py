@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import os, shutil, uuid, pathlib
 import urllib.request
+from urllib.parse import quote
 
 from app.core.database import get_db
 from app.core.deps import (
@@ -19,11 +20,13 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     WPOut, WPUpdate, FileVersionOut, NoteCreate, NoteResponseCreate,
-    NoteOut, SignOffCreate, SignOffOut, WPLinkCreate, WPLinkOut
+    NoteOut, SignOffCreate, SignOffOut, WPLinkCreate, WPLinkOut,
+    BulkSubmitRequest
 )
 from app.services.numbering import assign_wp_number, check_wp_number_conflict
 from app.services.events import emit_event
 from app.services.initials import display_initials
+from app.services.app_settings import get_editor_settings
 
 router = APIRouter(tags=["working-papers"])
 INDEX_OVERRIDE_ROLES = ("Audit Manager", "Partner", "Admin")
@@ -72,6 +75,20 @@ def wp_to_out(wp: WorkingPaper) -> WPOut:
     )
 
 
+def wp_has_review_activity(db: Session, wp: WorkingPaper) -> bool:
+    reviewer_signoffs = db.query(SignOff).filter(
+        SignOff.wp_id == wp.wp_id,
+        SignOff.signoff_type.in_(("Reviewer 1", "Reviewer 2", "Final Reviewer"))
+    ).count()
+    return bool(
+        wp.review_status in ("Submitted", "Under Review", "Review Notes Raised", "Finalised")
+        or wp.reviewer1_initials
+        or wp.reviewer2_initials
+        or wp.final_reviewed_at
+        or reviewer_signoffs
+    )
+
+
 def store_file(file: UploadFile, engagement_id: str, folder_path: str) -> tuple[str, int]:
     """Store file on-premise. Returns (storage_path, size_bytes)."""
     base = pathlib.Path(settings.FILE_STORAGE_PATH) / engagement_id
@@ -106,6 +123,51 @@ def get_wp_from_editor_token(token: str, db: Session) -> tuple[WorkingPaper, Use
     wp = get_wp_or_404(payload["wp_id"], db)
     user = db.query(User).filter(User.user_id == payload.get("sub")).first() if payload.get("sub") else None
     return wp, user
+
+
+def user_can_edit_wp(db: Session, wp: WorkingPaper, user: User | None) -> bool:
+    if not user:
+        return False
+    eng = db.query(Engagement).filter(Engagement.engagement_id == wp.engagement_id).first()
+    if eng and eng.status == "Archived":
+        return False
+    if not can_prepare(get_user_engagement_role(db, wp.engagement_id, user)):
+        return False
+    section = get_wp_section(db, wp)
+    if section and section.section_code and section.section_code not in ("1000", "3000", "MISC"):
+        try:
+            ensure_section_editable(db, wp.engagement_id, section.section_code)
+        except HTTPException:
+            return False
+    return True
+
+
+def save_editor_content(db: Session, wp: WorkingPaper, content: bytes, user: User | None, comment: str):
+    base = pathlib.Path(settings.FILE_STORAGE_PATH) / wp.engagement_id
+    base.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{uuid.uuid4()}_{wp.filename}"
+    dest = base / safe_name
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    wp.current_version += 1
+    wp.file_size_bytes = len(content)
+    wp.file_storage_path = str(dest)
+    wp.updated_at = datetime.utcnow()
+    wp.review_status = "Draft"
+
+    db.add(FileVersion(
+        wp_id=wp.wp_id,
+        version_number=wp.current_version,
+        filename=wp.filename,
+        file_size_bytes=len(content),
+        file_storage_path=str(dest),
+        uploaded_by=user.user_id if user else None,
+        uploaded_by_name=user.full_name if user else "Document editor",
+        comment=comment,
+    ))
+    emit_event(db, "wp.edited", user.user_id if user else None, user.full_name if user else "Document editor",
+               engagement_id=wp.engagement_id, payload={"wp_id": wp.wp_id, "version": wp.current_version})
 
 
 @router.get("/engagements/{engagement_id}/wps", response_model=dict)
@@ -255,7 +317,14 @@ def preview_wp(
     media_type = INLINE_MEDIA_TYPES.get(ext)
     if not media_type:
         raise HTTPException(status_code=415, detail={"error": "Inline preview is available for PDF and images. Use document editor for Office files.", "code": "PREVIEW_UNSUPPORTED"})
-    return FileResponse(wp.file_storage_path, media_type=media_type)
+    return FileResponse(
+        wp.file_storage_path,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.get("/wps/{wp_id}/editor-config")
@@ -265,69 +334,93 @@ def get_editor_config(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
-    eng = db.query(Engagement).filter(Engagement.engagement_id == wp.engagement_id).first()
-    if eng and eng.status == "Archived":
+    if not user_can_edit_wp(db, wp, current_user):
         return {
             "enabled": False,
-            "message": "This engagement is archived. Documents can be previewed or downloaded, but cannot be edited."
+            "message": "This working paper is read-only because of role, archive, or workflow lock rules."
         }
-    if not can_prepare(get_user_engagement_role(db, wp.engagement_id, current_user)):
-        return {
-            "enabled": False,
-            "message": "Your engagement role has read-only access to working paper files."
-        }
-    section = get_wp_section(db, wp)
-    if section and section.section_code and section.section_code not in ("1000", "3000", "MISC"):
-        try:
-            ensure_section_editable(db, wp.engagement_id, section.section_code)
-        except HTTPException:
-            return {
-                "enabled": False,
-                "message": "This section is locked by the sequential workflow."
-            }
     ext = (wp.file_format or pathlib.Path(wp.filename).suffix.lstrip(".")).lower()
     if ext not in EDITOR_EXTENSIONS:
         raise HTTPException(status_code=415, detail={"error": "This file type cannot be edited in the document editor", "code": "EDITOR_UNSUPPORTED"})
-    if not settings.DOCUMENT_EDITOR_URL:
+
+    editor_settings = get_editor_settings(db)
+    provider = editor_settings.get("provider", "none")
+    onlyoffice_url = editor_settings.get("onlyoffice_url") or settings.DOCUMENT_EDITOR_URL
+    collabora_url = editor_settings.get("collabora_url") or ""
+
+    if provider in ("onlyoffice-community", "onlyoffice-enterprise"):
+        if not onlyoffice_url:
+            return {
+                "enabled": False,
+                "provider": provider,
+                "message": "Set the ONLYOFFICE Document Server URL in Admin Settings to edit this file in the browser."
+            }
+
+        token = make_editor_token(wp, current_user)
+        public_base = settings.PUBLIC_BACKEND_URL.rstrip("/")
+        api_base = f"{public_base}/api/v1"
+        edited_at = int((wp.updated_at or wp.created_at or datetime.utcnow()).timestamp())
+        config = {
+            "document": {
+                "fileType": ext,
+                "key": f"{wp.wp_id}-{wp.current_version}-{edited_at}",
+                "title": wp.filename,
+                "url": f"{api_base}/wps/{wp.wp_id}/editor/download?token={token}",
+                "permissions": {
+                    "edit": True,
+                    "download": True,
+                    "print": True,
+                },
+            },
+            "documentType": document_type_for_ext(ext),
+            "editorConfig": {
+                "mode": "edit",
+                "callbackUrl": f"{api_base}/wps/{wp.wp_id}/editor/callback?token={token}",
+                "user": {
+                    "id": current_user.user_id,
+                    "name": current_user.full_name,
+                },
+                "customization": {
+                    "autosave": True,
+                    "forcesave": True,
+                },
+            },
+        }
         return {
-            "enabled": False,
-            "message": "Set DOCUMENT_EDITOR_URL to your on-prem ONLYOFFICE Document Server URL to edit this file in the browser."
+            "enabled": True,
+            "provider": provider,
+            "editorUrl": onlyoffice_url.rstrip("/"),
+            "config": config,
         }
 
-    token = make_editor_token(wp, current_user)
-    public_base = settings.PUBLIC_BACKEND_URL.rstrip("/")
-    api_base = f"{public_base}/api/v1"
-    edited_at = int((wp.updated_at or wp.created_at or datetime.utcnow()).timestamp())
-    config = {
-        "document": {
-            "fileType": ext,
-            "key": f"{wp.wp_id}-{wp.current_version}-{edited_at}",
-            "title": wp.filename,
-            "url": f"{api_base}/wps/{wp.wp_id}/editor/download?token={token}",
-            "permissions": {
-                "edit": True,
-                "download": True,
-                "print": True,
-            },
-        },
-        "documentType": document_type_for_ext(ext),
-        "editorConfig": {
-            "mode": "edit",
-            "callbackUrl": f"{api_base}/wps/{wp.wp_id}/editor/callback?token={token}",
-            "user": {
-                "id": current_user.user_id,
-                "name": current_user.full_name,
-            },
-            "customization": {
-                "autosave": True,
-                "forcesave": True,
-            },
-        },
-    }
+    if provider == "collabora-code":
+        if not collabora_url:
+            return {
+                "enabled": False,
+                "provider": provider,
+                "message": "Set the Collabora Online server URL in Admin Settings to edit this file in the browser."
+            }
+        token = make_editor_token(wp, current_user)
+        public_base = settings.PUBLIC_BACKEND_URL.rstrip("/")
+        wopi_src = f"{public_base}/api/v1/wopi/files/{wp.wp_id}"
+        launch_url = f"{collabora_url.rstrip('/')}/browser/dist/cool.html?WOPISrc={quote(wopi_src, safe='')}&access_token={quote(token, safe='')}"
+        return {
+            "enabled": True,
+            "provider": provider,
+            "launchUrl": launch_url,
+        }
+
+    if provider == "microsoft365":
+        return {
+            "enabled": False,
+            "provider": provider,
+            "message": "Microsoft 365 editing needs paid tenant licensing and Graph/WOPI setup. Select ONLYOFFICE or Collabora for self-hosted editing now."
+        }
+
     return {
-        "enabled": True,
-        "editorUrl": settings.DOCUMENT_EDITOR_URL.rstrip("/"),
-        "config": config,
+        "enabled": False,
+        "provider": provider,
+        "message": "In-app Office editing is disabled in Admin Settings."
     }
 
 
@@ -376,33 +469,68 @@ async def editor_callback(
     except Exception:
         return JSONResponse({"error": 1})
 
-    base = pathlib.Path(settings.FILE_STORAGE_PATH) / wp.engagement_id
-    base.mkdir(parents=True, exist_ok=True)
-    safe_name = f"{uuid.uuid4()}_{wp.filename}"
-    dest = base / safe_name
-    with open(dest, "wb") as f:
-        f.write(content)
-
-    wp.current_version += 1
-    wp.file_size_bytes = len(content)
-    wp.file_storage_path = str(dest)
-    wp.updated_at = datetime.utcnow()
-    wp.review_status = "Draft"
-
-    db.add(FileVersion(
-        wp_id=wp.wp_id,
-        version_number=wp.current_version,
-        filename=wp.filename,
-        file_size_bytes=len(content),
-        file_storage_path=str(dest),
-        uploaded_by=user.user_id if user else None,
-        uploaded_by_name=user.full_name if user else "Document editor",
-        comment="Saved from in-app document editor",
-    ))
-    emit_event(db, "wp.edited", user.user_id if user else None, user.full_name if user else "Document editor",
-               engagement_id=wp.engagement_id, payload={"wp_id": wp.wp_id, "version": wp.current_version})
+    save_editor_content(db, wp, content, user, "Saved from in-app document editor")
     db.commit()
     return {"error": 0}
+
+
+@router.get("/wopi/files/{wp_id}")
+def wopi_check_file_info(
+    wp_id: str,
+    access_token: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    wp, user = get_wp_from_editor_token(access_token, db)
+    if wp.wp_id != wp_id:
+        raise HTTPException(status_code=401, detail={"error": "Token does not match working paper", "code": "AUTH_REQUIRED"})
+    if not os.path.exists(wp.file_storage_path):
+        raise HTTPException(status_code=404, detail={"error": "File not found on server", "code": "NOT_FOUND"})
+    return {
+        "BaseFileName": wp.filename,
+        "OwnerId": wp.prepared_by or "",
+        "Size": wp.file_size_bytes or os.path.getsize(wp.file_storage_path),
+        "UserId": user.user_id if user else "editor",
+        "UserFriendlyName": user.full_name if user else "Document editor",
+        "Version": str(wp.current_version),
+        "UserCanWrite": user_can_edit_wp(db, wp, user),
+        "SupportsUpdate": True,
+        "SupportsLocks": False,
+        "UserCanNotWriteRelative": True,
+    }
+
+
+@router.get("/wopi/files/{wp_id}/contents")
+def wopi_get_file(
+    wp_id: str,
+    access_token: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    wp, _user = get_wp_from_editor_token(access_token, db)
+    if wp.wp_id != wp_id:
+        raise HTTPException(status_code=401, detail={"error": "Token does not match working paper", "code": "AUTH_REQUIRED"})
+    if not os.path.exists(wp.file_storage_path):
+        raise HTTPException(status_code=404, detail={"error": "File not found on server", "code": "NOT_FOUND"})
+    return FileResponse(wp.file_storage_path, filename=wp.filename)
+
+
+@router.post("/wopi/files/{wp_id}/contents")
+async def wopi_put_file(
+    wp_id: str,
+    request: Request,
+    access_token: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    wp, user = get_wp_from_editor_token(access_token, db)
+    if wp.wp_id != wp_id:
+        raise HTTPException(status_code=401, detail={"error": "Token does not match working paper", "code": "AUTH_REQUIRED"})
+    if not user_can_edit_wp(db, wp, user):
+        raise HTTPException(status_code=403, detail={"error": "Working paper is read-only", "code": "INSUFFICIENT_ROLE"})
+    content = await request.body()
+    if len(content) > settings.max_file_size_bytes:
+        raise HTTPException(status_code=400, detail={"error": "File exceeds 100 MB limit", "code": "FILE_TOO_LARGE"})
+    save_editor_content(db, wp, content, user, "Saved from Collabora Online")
+    db.commit()
+    return {"LastModifiedTime": datetime.utcnow().isoformat() + "Z"}
 
 
 @router.post("/wps/{wp_id}/replace")
@@ -419,6 +547,10 @@ async def replace_wp(
     if not can_prepare(get_user_engagement_role(db, wp.engagement_id, current_user)):
         raise HTTPException(status_code=403, detail={"error": "EQCR Reviewers cannot replace WPs", "code": "INSUFFICIENT_ROLE"})
 
+    ext = pathlib.Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail={"error": f"Unsupported format: {ext}", "code": "UNSUPPORTED_FORMAT"})
+
     content = await file.read()
     if len(content) > settings.max_file_size_bytes:
         raise HTTPException(status_code=400, detail={"error": "File exceeds 100 MB limit", "code": "FILE_TOO_LARGE"})
@@ -428,9 +560,11 @@ async def replace_wp(
     new_version = wp.current_version + 1
     wp.current_version = new_version
     wp.filename = file.filename
+    wp.file_format = ext.lstrip(".")
     wp.file_size_bytes = size
     wp.file_storage_path = storage_path
     wp.review_status = "Draft"
+    wp.updated_at = datetime.utcnow()
 
     ver = FileVersion(
         wp_id=wp_id,
@@ -513,12 +647,17 @@ def update_wp(
 @router.delete("/wps/{wp_id}")
 def soft_delete_wp(
     wp_id: str,
-    current_user: User = Depends(require_roles("Audit Manager", "Partner", "Admin")),
+    current_user: User = Depends(require_roles("Articled Assistant", "Audit Executive", "Audit Manager", "Partner", "Admin")),
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
     ensure_engagement_editable(db, wp.engagement_id)
     ensure_section_editable(db, wp.engagement_id, get_wp_section(db, wp).section_code)
+    has_review_activity = wp_has_review_activity(db, wp)
+    if has_review_activity and current_user.role != "Partner":
+        raise HTTPException(status_code=403, detail={"error": "Only Partner can delete a WP after reviewer activity or sign-off", "code": "INSUFFICIENT_ROLE"})
+    if not has_review_activity and current_user.role not in INDEX_OVERRIDE_ROLES and wp.prepared_by != current_user.user_id:
+        raise HTTPException(status_code=403, detail={"error": "Only the preparer or Manager+ can delete an unreviewed WP", "code": "INSUFFICIENT_ROLE"})
     wp.is_deleted = True
     emit_event(db, "wp.deleted", current_user.user_id, current_user.full_name,
                engagement_id=wp.engagement_id, payload={"wp_id": wp_id})
@@ -544,6 +683,34 @@ def submit_for_review(
                engagement_id=wp.engagement_id, payload={"wp_id": wp_id})
     db.commit()
     return {"data": wp_to_out(wp), "message": "Submitted for review"}
+
+
+@router.post("/engagements/{engagement_id}/wps/bulk-submit")
+def bulk_submit_for_review(
+    engagement_id: str,
+    payload: BulkSubmitRequest,
+    current_user: User = Depends(require_roles("Articled Assistant", "Audit Executive", "Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    if not payload.wp_ids:
+        raise HTTPException(status_code=400, detail={"error": "Select at least one working paper", "code": "VALIDATION_ERROR"})
+    ensure_engagement_editable(db, engagement_id)
+
+    submitted = []
+    for wp_id in payload.wp_ids:
+        wp = get_wp_or_404(wp_id, db)
+        if wp.engagement_id != engagement_id:
+            raise HTTPException(status_code=400, detail={"error": "Selected WP belongs to another engagement", "code": "ENGAGEMENT_MISMATCH"})
+        ensure_section_editable(db, engagement_id, get_wp_section(db, wp).section_code)
+        if current_user.role not in INDEX_OVERRIDE_ROLES and wp.prepared_by and wp.prepared_by != current_user.user_id:
+            raise HTTPException(status_code=403, detail={"error": "Only the WP preparer or Manager+ can submit selected WPs", "code": "INSUFFICIENT_ROLE"})
+        wp.review_status = "Submitted"
+        submitted.append(wp.wp_id)
+
+    emit_event(db, "review.bulk_submitted", current_user.user_id, current_user.full_name,
+               engagement_id=engagement_id, payload={"wp_ids": submitted, "count": len(submitted)})
+    db.commit()
+    return {"data": {"submitted": submitted, "count": len(submitted)}, "message": f"{len(submitted)} working paper(s) submitted for review"}
 
 
 @router.post("/wps/{wp_id}/finalise")

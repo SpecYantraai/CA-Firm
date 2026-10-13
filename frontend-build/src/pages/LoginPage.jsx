@@ -6,7 +6,7 @@ import { useAuthStore } from '../store';
 import { getErrorMessage } from '../utils';
 import {
   ArrowRight, Brain, CheckCircle2, Eye, EyeOff, Lock, Mail,
-  ShieldCheck, Sparkles, Workflow, Zap
+  ShieldCheck, Sparkles, Workflow, Zap, KeyRound
 } from 'lucide-react';
 import heroImg from '../assets/hero.png';
 
@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
@@ -32,6 +34,25 @@ export default function LoginPage() {
       toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!email) {
+      toast.error('Enter your email first');
+      return;
+    }
+    setResetting(true);
+    setResetPassword('');
+    try {
+      const res = await authApi.requestPasswordReset(email);
+      const pw = (res.data.message || '').match(/Temporary password: (\S+)/)?.[1] || '';
+      setResetPassword(pw);
+      toast.success('Temporary password generated');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -129,6 +150,17 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Enter AuditOS'} {!loading && <ArrowRight size={16}/>}
             </button>
           </form>
+
+          <button className="login-reset-link" type="button" onClick={handlePasswordReset} disabled={resetting}>
+            <KeyRound size={14}/> {resetting ? 'Generating password...' : 'Forgot password? Generate temporary password'}
+          </button>
+
+          {resetPassword && (
+            <div className="login-reset-box">
+              <div>Temporary password</div>
+              <strong>{resetPassword}</strong>
+            </div>
+          )}
 
           <div className="login-demo-box">
             <div className="login-demo-title">Demo access</div>

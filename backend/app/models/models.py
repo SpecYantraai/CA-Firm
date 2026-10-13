@@ -168,3 +168,78 @@ class WorkingPaperLink(Base):
     source_wp_id = Column(String(36), ForeignKey("working_papers.wp_id"), nullable=False)
     target_wp_id = Column(String(36), ForeignKey("working_papers.wp_id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class FinalAuditArchive(Base):
+    __tablename__ = "final_audit_archives"
+    archive_id = Column(String(36), primary_key=True, default=gen_uuid)
+    engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), nullable=False)
+    archive_name = Column(String(500), nullable=False)
+    file_storage_path = Column(String(1000), nullable=False)
+    file_size_bytes = Column(BigInteger)
+    quality_score = Column(Integer, nullable=True)
+    issue_count = Column(Integer, default=0)
+    assembled_by = Column(String(36), nullable=True)
+    assembled_by_name = Column(String(255), nullable=True)
+    assembled_at = Column(DateTime, server_default=func.now())
+    manifest_json = Column(JSON, nullable=True)
+
+class ESignatureRequest(Base):
+    __tablename__ = "e_signature_requests"
+    request_id = Column(String(36), primary_key=True, default=gen_uuid)
+    engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), nullable=False)
+    wp_id = Column(String(36), ForeignKey("working_papers.wp_id"), nullable=True)
+    document_type = Column(String(80), nullable=False)
+    signer_name = Column(String(255), nullable=False)
+    signer_email = Column(String(255), nullable=False)
+    status = Column(String(20), default="Pending")
+    token = Column(String(100), nullable=False, unique=True)
+    requested_by = Column(String(36), nullable=True)
+    requested_by_name = Column(String(255), nullable=True)
+    requested_at = Column(DateTime, server_default=func.now())
+    signed_at = Column(DateTime, nullable=True)
+    signed_by_name = Column(String(255), nullable=True)
+    signature_text = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_by = Column(String(36), nullable=True)
+
+class ClientRequest(Base):
+    __tablename__ = "client_requests"
+    request_id = Column(String(36), primary_key=True, default=gen_uuid)
+    engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    request_type = Column(String(80), default="Document")
+    status = Column(String(30), default="Requested")
+    priority = Column(String(20), default="Normal")
+    due_date = Column(DateTime, nullable=True)
+    owner_user_id = Column(String(36), nullable=True)
+    owner_name = Column(String(255), nullable=True)
+    client_contact_name = Column(String(255), nullable=True)
+    client_contact_email = Column(String(255), nullable=True)
+    uploaded_file_name = Column(String(500), nullable=True)
+    uploaded_file_path = Column(String(1000), nullable=True)
+    uploaded_file_size = Column(BigInteger, nullable=True)
+    uploaded_by_name = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime, nullable=True)
+    created_by = Column(String(36), nullable=True)
+    created_by_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class ClientRequestComment(Base):
+    __tablename__ = "client_request_comments"
+    comment_id = Column(String(36), primary_key=True, default=gen_uuid)
+    request_id = Column(String(36), ForeignKey("client_requests.request_id"), nullable=False)
+    engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), nullable=False)
+    comment_text = Column(Text, nullable=False)
+    author_id = Column(String(36), nullable=True)
+    author_name = Column(String(255), nullable=True)
+    author_role = Column(String(50), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

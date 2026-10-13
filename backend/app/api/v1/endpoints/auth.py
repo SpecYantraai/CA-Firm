@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.core.database import get_db
-from app.core.security import verify_password, create_access_token, hash_password
+from app.core.security import verify_password, create_access_token, hash_password, generate_temp_password
 from app.core.deps import get_current_user
 from app.models.models import User, LoginLog
-from app.schemas.schemas import LoginRequest, TokenResponse, UserOut, ChangePasswordRequest
+from app.schemas.schemas import LoginRequest, TokenResponse, UserOut, ChangePasswordRequest, PasswordResetRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -54,3 +54,18 @@ def change_password(
     current_user.must_change_password = False
     db.commit()
     return {"data": None, "message": "Password changed successfully"}
+
+@router.post("/request-password-reset")
+def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
+    if not user:
+        raise HTTPException(status_code=404, detail={"error": "Active user not found", "code": "NOT_FOUND"})
+
+    temp_pw = generate_temp_password()
+    user.hashed_password = hash_password(temp_pw)
+    user.must_change_password = True
+    db.commit()
+    return {
+        "data": {"email": user.email},
+        "message": f"Temporary password: {temp_pw}"
+    }

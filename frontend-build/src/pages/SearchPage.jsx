@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { searchApi } from '../api';
 import { useAppStore } from '../store';
 import { statusBadgeClass, formatDate, formatBytes, getErrorMessage } from '../utils';
-import { Search, FileText, FolderOpen } from 'lucide-react';
+import { Search, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function SearchPage() {

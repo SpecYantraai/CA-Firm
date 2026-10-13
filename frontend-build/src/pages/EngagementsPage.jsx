@@ -21,6 +21,7 @@ function CreateEngagementModal({ onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
 
   const years = ['2026-27', '2025-26', '2024-25', '2023-24', '2022-23', '2021-22'];
+  const selectedType = ENGAGEMENT_TYPES.find(type => type.value === form.engagement_type);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -64,6 +65,9 @@ function CreateEngagementModal({ onClose, onCreated }) {
                     <option key={type.value} value={type.value}>{type.label}</option>
                   ))}
                 </select>
+                {selectedType?.description && (
+                  <div className="field-help">{selectedType.description}</div>
+                )}
               </div>
             </div>
             <div className="form-row">
@@ -182,11 +186,6 @@ export default function EngagementsPage() {
               <div className="empty-state-icon"><FolderOpen size={24}/></div>
               <div className="empty-state-title">No engagements found</div>
               <div className="empty-state-sub">{search ? 'Try a different search' : 'Create your first engagement'}</div>
-              {canCreate && !search && (
-                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                  <Plus size={14}/> Create Engagement
-                </button>
-              )}
             </div>
           ) : (
             <div className="engagement-card-grid">

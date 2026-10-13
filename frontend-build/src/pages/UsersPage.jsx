@@ -1,8 +1,9 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
 import { userApi } from '../api';
 import { useAuthStore } from '../store';
-import { formatDate, formatDateTime, initials, getErrorMessage } from '../utils';
-import { Plus, X, UserX, Users } from 'lucide-react';
+import { formatDate, initials, getErrorMessage } from '../utils';
+import { Plus, X, UserX, Edit3, RotateCcw, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ROLES = ['Articled Assistant','Audit Executive','Audit Manager','Partner','EQCR Reviewer','Admin'];
@@ -107,11 +108,101 @@ function CreateUserModal({ onClose, onCreated }) {
   );
 }
 
+function EditUserModal({ targetUser, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    full_name: targetUser.full_name || '',
+    initials: targetUser.initials || '',
+    email: targetUser.email || '',
+    role: targetUser.role || 'Articled Assistant',
+    is_active: targetUser.is_active,
+  });
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await userApi.update(targetUser.user_id, form);
+      toast.success('User updated');
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal modal-md">
+        <div className="modal-header">
+          <span className="modal-title">Edit User</span>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={16}/></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <input className="input" value={form.full_name}
+                onChange={e => setForm({...form, full_name:e.target.value})} required/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email Address</label>
+              <input className="input" type="email" value={form.email}
+                onChange={e => setForm({...form, email:e.target.value})} required/>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Initials</label>
+                <input className="input" value={form.initials}
+                  onChange={e => setForm({...form, initials:e.target.value.toUpperCase()})}/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select className="select" value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
+                  {ROLES.map(r => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+            <label className="check-control">
+              <input type="checkbox" checked={form.is_active}
+                onChange={e => setForm({...form, is_active:e.target.checked})}/>
+              <span>
+                <strong>Active user</strong>
+                <small>Turn this on to reactivate a deactivated user.</small>
+              </span>
+            </label>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Saving...' : 'Save User'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const user = useAuthStore(s => s.user);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [tempPassword, setTempPassword] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    userApi.list().then(r => setUsers(r.data)).catch(() => toast.error('Failed to load users')).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (user?.role === 'Admin') load();
+    else setLoading(false);
+  }, [user?.role]);
 
   if (user?.role !== 'Admin') {
     return (
@@ -122,18 +213,34 @@ export default function UsersPage() {
     );
   }
 
-  const load = () => {
-    setLoading(true);
-    userApi.list().then(r => setUsers(r.data)).catch(() => toast.error('Failed to load users')).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
-
   const deactivate = async (userId, name) => {
     if (!confirm(`Deactivate ${name}? Their WP attributions will be permanently preserved.`)) return;
     try {
       await userApi.deactivate(userId);
       toast.success(`${name} deactivated. All WP attributions preserved (FR-053).`);
+      load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const reactivate = async (userId, name) => {
+    try {
+      await userApi.reactivate(userId);
+      toast.success(`${name} reactivated`);
+      load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const resetPassword = async (userId, name) => {
+    if (!confirm(`Generate a temporary password for ${name}?`)) return;
+    try {
+      const res = await userApi.resetPassword(userId);
+      const pw = (res.data.message || '').match(/Temporary password: (\S+)/)?.[1] || '';
+      setTempPassword(pw);
+      toast.success('Temporary password generated');
       load();
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -147,6 +254,28 @@ export default function UsersPage() {
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
       {showCreate && (
         <CreateUserModal onClose={() => setShowCreate(false)} onCreated={() => { load(); }}/>
+      )}
+      {editingUser && (
+        <EditUserModal targetUser={editingUser} onClose={() => setEditingUser(null)} onSaved={load}/>
+      )}
+      {tempPassword && (
+        <div className="modal-overlay">
+          <div className="modal modal-sm">
+            <div className="modal-header">
+              <span className="modal-title">Temporary Password</span>
+              <button className="btn btn-icon btn-ghost" onClick={() => setTempPassword('')}><X size={16}/></button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background:'var(--bg-table-head)', borderRadius:'var(--r-md)', padding:'14px 16px' }}>
+                <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>Share securely with the user</div>
+                <div style={{ fontFamily:'monospace', fontSize:16, fontWeight:700, color:'var(--brand-navy)', letterSpacing:'0.05em' }}>{tempPassword}</div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setTempPassword('')}>Done</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="page-header">
@@ -206,14 +335,24 @@ export default function UsersPage() {
                       <td className="text-sm text-muted">{formatDate(u.created_at)}</td>
                       <td className="text-sm text-muted">{u.last_login_at ? formatDate(u.last_login_at) : 'Never'}</td>
                       <td>
-                        {u.is_active && u.user_id !== user?.user_id && (
-                          <button className="btn btn-danger btn-xs" onClick={() => deactivate(u.user_id, u.full_name)}>
-                            <UserX size={12}/> Deactivate
+                        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                          <button className="btn btn-outline btn-xs" onClick={() => setEditingUser(u)}>
+                            <Edit3 size={12}/> Edit
                           </button>
-                        )}
-                        {!u.is_active && (
-                          <span style={{ fontSize:11, color:'var(--text-muted)' }}>Attributions preserved</span>
-                        )}
+                          <button className="btn btn-outline btn-xs" onClick={() => resetPassword(u.user_id, u.full_name)}>
+                            <KeyRound size={12}/> Reset
+                          </button>
+                          {u.is_active && u.user_id !== user?.user_id && (
+                            <button className="btn btn-danger btn-xs" onClick={() => deactivate(u.user_id, u.full_name)}>
+                              <UserX size={12}/> Deactivate
+                            </button>
+                          )}
+                          {!u.is_active && (
+                            <button className="btn btn-primary btn-xs" onClick={() => reactivate(u.user_id, u.full_name)}>
+                              <RotateCcw size={12}/> Reactivate
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

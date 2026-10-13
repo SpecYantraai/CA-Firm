@@ -8,6 +8,7 @@ import EngagementsPage from './pages/EngagementsPage';
 import EngagementDetailPage from './pages/EngagementDetailPage';
 import SearchPage from './pages/SearchPage';
 import UsersPage from './pages/UsersPage';
+import SettingsPage from './pages/SettingsPage';
 import './index.css';
 
 function ProtectedRoute({ children }) {
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/engagements/:id" element={<ProtectedRoute><AppLayout><EngagementDetailPage /></AppLayout></ProtectedRoute>}/>
         <Route path="/search" element={<ProtectedRoute><AppLayout><SearchPage /></AppLayout></ProtectedRoute>}/>
         <Route path="/users" element={<ProtectedRoute><AppLayout><UsersPage /></AppLayout></ProtectedRoute>}/>
+        <Route path="/settings" element={<ProtectedRoute><AppLayout><SettingsPage /></AppLayout></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

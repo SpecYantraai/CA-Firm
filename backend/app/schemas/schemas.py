@@ -12,12 +12,22 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
+class PasswordResetRequest(BaseModel):
+    email: str
+
 # ── User ─────────────────────────────────────────────────────────────────────
 class UserCreate(BaseModel):
     full_name: str
     email: str
     role: str
     initials: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    initials: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class UserOut(BaseModel):
     user_id: str
@@ -142,6 +152,9 @@ class WPUpdate(BaseModel):
     prepared_at: Optional[datetime] = None
     final_reviewed_at: Optional[datetime] = None
 
+class BulkSubmitRequest(BaseModel):
+    wp_ids: List[str]
+
 # ── Folder ────────────────────────────────────────────────────────────────────
 class FolderCreate(BaseModel):
     parent_folder_id: Optional[str] = None
@@ -241,6 +254,143 @@ class ClosureChecklist(BaseModel):
     items: List[ClosureChecklistItem]
     open_notes_count: int
 
+# Review quality checks
+class QualityCheckItem(BaseModel):
+    check_id: str
+    category: str
+    severity: str
+    status: str
+    title: str
+    detail: str
+    recommendation: str
+    wp_id: Optional[str] = None
+    wp_number: Optional[str] = None
+    filename: Optional[str] = None
+    section_code: Optional[str] = None
+    section_name: Optional[str] = None
+    age_days: Optional[int] = None
+
+class QualityCheckSummary(BaseModel):
+    engagement_id: str
+    score: int
+    total_issues: int
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+    categories: dict = {}
+    checks: List[QualityCheckItem] = []
+
+# Final file assembly
+class FinalAssemblyCreate(BaseModel):
+    force: bool = False
+
+class FinalAuditArchiveOut(BaseModel):
+    archive_id: str
+    engagement_id: str
+    archive_name: str
+    file_size_bytes: Optional[int] = None
+    quality_score: Optional[int] = None
+    issue_count: int = 0
+    assembled_by_name: Optional[str] = None
+    assembled_at: Optional[datetime] = None
+    post_assembly_changes: int = 0
+    class Config:
+        from_attributes = True
+
+class FinalAssemblyStatus(BaseModel):
+    engagement_id: str
+    is_locked: bool
+    latest_archive: Optional[FinalAuditArchiveOut] = None
+    archives: List[FinalAuditArchiveOut] = []
+
+# E-signatures
+class ESignatureCreate(BaseModel):
+    document_type: str
+    signer_name: str
+    signer_email: str
+    wp_id: Optional[str] = None
+
+class ESignatureSign(BaseModel):
+    signer_name: str
+    signature_text: str
+
+class ESignatureOut(BaseModel):
+    request_id: str
+    engagement_id: str
+    wp_id: Optional[str] = None
+    document_type: str
+    signer_name: str
+    signer_email: str
+    status: str
+    requested_by_name: Optional[str] = None
+    requested_at: Optional[datetime] = None
+    signed_at: Optional[datetime] = None
+    signed_by_name: Optional[str] = None
+    signature_text: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+# Client request / PBC portal
+class ClientRequestCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    request_type: str = "Document"
+    priority: str = "Normal"
+    due_date: Optional[datetime] = None
+    owner_user_id: Optional[str] = None
+    client_contact_name: Optional[str] = None
+    client_contact_email: Optional[str] = None
+
+class ClientRequestUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    request_type: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[datetime] = None
+    owner_user_id: Optional[str] = None
+    client_contact_name: Optional[str] = None
+    client_contact_email: Optional[str] = None
+    status: Optional[str] = None
+
+class ClientRequestCommentCreate(BaseModel):
+    comment_text: str
+
+class ClientRequestCommentOut(BaseModel):
+    comment_id: str
+    request_id: str
+    engagement_id: str
+    comment_text: str
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+    created_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class ClientRequestOut(BaseModel):
+    request_id: str
+    engagement_id: str
+    title: str
+    description: Optional[str] = None
+    request_type: str
+    status: str
+    priority: str
+    due_date: Optional[datetime] = None
+    owner_user_id: Optional[str] = None
+    owner_name: Optional[str] = None
+    client_contact_name: Optional[str] = None
+    client_contact_email: Optional[str] = None
+    uploaded_file_name: Optional[str] = None
+    uploaded_file_size: Optional[int] = None
+    uploaded_by_name: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
+    created_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    comments_count: int = 0
+    class Config:
+        from_attributes = True
+
 # ── Generic ──────────────────────────────────────────────────────────────────
 class SuccessResponse(BaseModel):
     data: Any = None
@@ -249,3 +399,16 @@ class SuccessResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     code: str
+
+# App settings
+class EditorSettingsOut(BaseModel):
+    provider: str = "onlyoffice-community"
+    onlyoffice_url: Optional[str] = None
+    collabora_url: Optional[str] = None
+    microsoft365_enabled: bool = False
+
+class EditorSettingsUpdate(BaseModel):
+    provider: str
+    onlyoffice_url: Optional[str] = None
+    collabora_url: Optional[str] = None
+    microsoft365_enabled: bool = False

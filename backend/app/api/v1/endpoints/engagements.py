@@ -1,14 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
+import os
+import secrets
+import pathlib
+import uuid
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles, can_access_engagement
-from app.models.models import Engagement, Section, Folder, WorkingPaper, EngagementUser, User, ReviewNote, FileVersion
-from app.schemas.schemas import EngagementCreate, EngagementOut, EngagementDetail, RollForwardRequest
+from app.models.models import (
+    Engagement, Section, Folder, WorkingPaper, EngagementUser, User, ReviewNote,
+    FileVersion, FinalAuditArchive, ESignatureRequest, ClientRequest, ClientRequestComment
+)
+from app.schemas.schemas import (
+    EngagementCreate, EngagementOut, EngagementDetail, RollForwardRequest,
+    QualityCheckSummary, FinalAssemblyCreate, FinalAssemblyStatus,
+    FinalAuditArchiveOut, ESignatureCreate, ESignatureSign, ESignatureOut,
+    ClientRequestCreate, ClientRequestUpdate, ClientRequestOut,
+    ClientRequestCommentCreate, ClientRequestCommentOut
+)
 from app.services.events import emit_event
 from app.services.audit_file_templates import create_standard_audit_file
+from app.services.quality_checks import run_quality_checks
+from app.services.final_assembly import build_final_archive, post_assembly_changes
 from app.core.config import SECTION_CODES, SECTION_NAMES, ENGAGEMENT_TYPES
+from app.core.config import settings
 
 router = APIRouter(prefix="/engagements", tags=["engagements"])
 
@@ -27,6 +44,21 @@ def normalise_engagement_type(value: str) -> str:
         "internal-audit": "other-assurance-related",
     }
     return legacy.get(value, value)
+
+def client_request_to_out(db: Session, req: ClientRequest) -> ClientRequestOut:
+    result = ClientRequestOut.model_validate(req)
+    result.comments_count = db.query(ClientRequestComment).filter(
+        ClientRequestComment.request_id == req.request_id
+    ).count()
+    return result
+
+def get_engagement_or_404(db: Session, engagement_id: str, current_user: User) -> Engagement:
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "Access denied", "code": "INSUFFICIENT_ROLE"})
+    return eng
 
 @router.get("", response_model=list[EngagementOut])
 def list_engagements(
@@ -121,6 +153,376 @@ def get_engagement(
     ).order_by(Section.section_code).all()
     result.sections = [SectionOut.model_validate(s) for s in sections]
     return result
+
+@router.get("/{engagement_id}/quality-checks", response_model=QualityCheckSummary)
+def get_quality_checks(
+    engagement_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "Access denied", "code": "INSUFFICIENT_ROLE"})
+    return run_quality_checks(db, engagement_id)
+
+@router.get("/{engagement_id}/client-requests", response_model=list[ClientRequestOut])
+def list_client_requests(
+    engagement_id: str,
+    status: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    get_engagement_or_404(db, engagement_id, current_user)
+    q = db.query(ClientRequest).filter(ClientRequest.engagement_id == engagement_id)
+    if status:
+        q = q.filter(ClientRequest.status == status)
+    return [
+        client_request_to_out(db, req)
+        for req in q.order_by(ClientRequest.due_date.asc(), ClientRequest.created_at.desc()).all()
+    ]
+
+@router.post("/{engagement_id}/client-requests", response_model=dict, status_code=201)
+def create_client_request(
+    engagement_id: str,
+    payload: ClientRequestCreate,
+    current_user: User = Depends(require_roles("Audit Executive", "Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    eng = get_engagement_or_404(db, engagement_id, current_user)
+    if eng.status in ("Archived", "Finalised"):
+        raise HTTPException(status_code=400, detail={"error": "Engagement is locked", "code": "ENGAGEMENT_LOCKED"})
+    owner = db.query(User).filter(User.user_id == payload.owner_user_id).first() if payload.owner_user_id else current_user
+    req = ClientRequest(
+        engagement_id=engagement_id,
+        title=payload.title,
+        description=payload.description,
+        request_type=payload.request_type,
+        priority=payload.priority,
+        due_date=payload.due_date,
+        owner_user_id=owner.user_id if owner else None,
+        owner_name=owner.full_name if owner else None,
+        client_contact_name=payload.client_contact_name,
+        client_contact_email=payload.client_contact_email,
+        created_by=current_user.user_id,
+        created_by_name=current_user.full_name,
+    )
+    db.add(req)
+    db.flush()
+    emit_event(db, "client_request.created", current_user.user_id, current_user.full_name,
+               engagement_id=engagement_id, payload={"request_id": req.request_id, "title": req.title})
+    db.commit()
+    db.refresh(req)
+    return {"data": client_request_to_out(db, req), "message": "Client request created"}
+
+@router.patch("/client-requests/{request_id}", response_model=dict)
+def update_client_request(
+    request_id: str,
+    payload: ClientRequestUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "Client request not found", "code": "NOT_FOUND"})
+    eng = get_engagement_or_404(db, req.engagement_id, current_user)
+    if eng.status in ("Archived", "Finalised"):
+        raise HTTPException(status_code=400, detail={"error": "Engagement is locked", "code": "ENGAGEMENT_LOCKED"})
+
+    for field in ("title", "description", "request_type", "priority", "due_date", "client_contact_name", "client_contact_email", "status"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(req, field, value)
+    if payload.owner_user_id is not None:
+        owner = db.query(User).filter(User.user_id == payload.owner_user_id).first()
+        req.owner_user_id = owner.user_id if owner else None
+        req.owner_name = owner.full_name if owner else None
+    emit_event(db, "client_request.updated", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id, "status": req.status})
+    db.commit()
+    db.refresh(req)
+    return {"data": client_request_to_out(db, req), "message": "Client request updated"}
+
+@router.get("/client-requests/{request_id}/comments", response_model=list[ClientRequestCommentOut])
+def list_client_request_comments(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "Client request not found", "code": "NOT_FOUND"})
+    get_engagement_or_404(db, req.engagement_id, current_user)
+    rows = db.query(ClientRequestComment).filter(
+        ClientRequestComment.request_id == request_id
+    ).order_by(ClientRequestComment.created_at.asc()).all()
+    return [ClientRequestCommentOut.model_validate(row) for row in rows]
+
+@router.post("/client-requests/{request_id}/comments", response_model=dict, status_code=201)
+def add_client_request_comment(
+    request_id: str,
+    payload: ClientRequestCommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "Client request not found", "code": "NOT_FOUND"})
+    get_engagement_or_404(db, req.engagement_id, current_user)
+    comment = ClientRequestComment(
+        request_id=request_id,
+        engagement_id=req.engagement_id,
+        comment_text=payload.comment_text,
+        author_id=current_user.user_id,
+        author_name=current_user.full_name,
+        author_role=current_user.role,
+    )
+    db.add(comment)
+    db.flush()
+    emit_event(db, "client_request.comment", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id})
+    db.commit()
+    db.refresh(comment)
+    return {"data": ClientRequestCommentOut.model_validate(comment), "message": "Comment added"}
+
+@router.post("/client-requests/{request_id}/upload", response_model=dict)
+async def upload_client_request_file(
+    request_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "Client request not found", "code": "NOT_FOUND"})
+    eng = get_engagement_or_404(db, req.engagement_id, current_user)
+    if eng.status in ("Archived", "Finalised"):
+        raise HTTPException(status_code=400, detail={"error": "Engagement is locked", "code": "ENGAGEMENT_LOCKED"})
+    content = await file.read()
+    if len(content) > settings.max_file_size_bytes:
+        raise HTTPException(status_code=400, detail={"error": "File exceeds 100 MB limit", "code": "FILE_TOO_LARGE"})
+    base = pathlib.Path(settings.FILE_STORAGE_PATH) / req.engagement_id / "client-requests"
+    base.mkdir(parents=True, exist_ok=True)
+    safe_filename = pathlib.Path(file.filename or "client-document").name
+    dest = base / f"{uuid.uuid4()}_{safe_filename}"
+    with open(dest, "wb") as f:
+        f.write(content)
+    req.uploaded_file_name = safe_filename
+    req.uploaded_file_path = str(dest)
+    req.uploaded_file_size = len(content)
+    req.uploaded_by_name = current_user.full_name
+    req.uploaded_at = datetime.utcnow()
+    req.status = "Received"
+    emit_event(db, "client_request.uploaded", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id, "filename": safe_filename})
+    db.commit()
+    db.refresh(req)
+    return {"data": client_request_to_out(db, req), "message": "Client document uploaded"}
+
+@router.get("/client-requests/{request_id}/download")
+def download_client_request_file(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req or not req.uploaded_file_path:
+        raise HTTPException(status_code=404, detail={"error": "Uploaded file not found", "code": "NOT_FOUND"})
+    get_engagement_or_404(db, req.engagement_id, current_user)
+    if not os.path.exists(req.uploaded_file_path):
+        raise HTTPException(status_code=404, detail={"error": "Uploaded file not found", "code": "NOT_FOUND"})
+    return FileResponse(req.uploaded_file_path, filename=req.uploaded_file_name)
+
+@router.post("/client-requests/{request_id}/remind", response_model=dict)
+def remind_client_request(
+    request_id: str,
+    current_user: User = Depends(require_roles("Audit Executive", "Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ClientRequest).filter(ClientRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "Client request not found", "code": "NOT_FOUND"})
+    get_engagement_or_404(db, req.engagement_id, current_user)
+    emit_event(db, "client_request.reminder", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id, "email": req.client_contact_email})
+    db.commit()
+    return {"data": None, "message": "Reminder recorded"}
+
+def archive_to_out(db: Session, archive: FinalAuditArchive) -> FinalAuditArchiveOut:
+    result = FinalAuditArchiveOut.model_validate(archive)
+    result.post_assembly_changes = post_assembly_changes(db, archive)
+    return result
+
+@router.get("/{engagement_id}/final-assembly", response_model=FinalAssemblyStatus)
+def get_final_assembly_status(
+    engagement_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "Access denied", "code": "INSUFFICIENT_ROLE"})
+    archives = db.query(FinalAuditArchive).filter(
+        FinalAuditArchive.engagement_id == engagement_id
+    ).order_by(FinalAuditArchive.assembled_at.desc()).all()
+    archive_out = [archive_to_out(db, archive) for archive in archives]
+    return FinalAssemblyStatus(
+        engagement_id=engagement_id,
+        is_locked=eng.status in ("Finalised", "Archived"),
+        latest_archive=archive_out[0] if archive_out else None,
+        archives=archive_out,
+    )
+
+@router.post("/{engagement_id}/final-assembly", response_model=dict)
+def create_final_assembly(
+    engagement_id: str,
+    payload: FinalAssemblyCreate,
+    current_user: User = Depends(require_roles("Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if eng.status == "Archived":
+        raise HTTPException(status_code=400, detail={"error": "Archived engagement cannot be assembled again", "code": "ENGAGEMENT_ARCHIVED"})
+
+    quality = run_quality_checks(db, engagement_id)
+    if quality.critical > 0 and not payload.force:
+        raise HTTPException(status_code=400, detail={
+            "error": f"{quality.critical} critical quality issue(s) must be cleared or force assembly must be used",
+            "code": "QUALITY_ISSUES_EXIST"
+        })
+
+    archive = build_final_archive(db, eng, current_user.user_id, current_user.full_name)
+    eng.status = "Finalised"
+    eng.archived_at = datetime.utcnow()
+    eng.archived_by = current_user.user_id
+    emit_event(db, "final_file.assembled", current_user.user_id, current_user.full_name,
+               engagement_id=engagement_id, payload={"archive_id": archive.archive_id, "quality_score": archive.quality_score})
+    db.commit()
+    db.refresh(archive)
+    return {"data": archive_to_out(db, archive), "message": "Final audit file assembled and engagement locked"}
+
+@router.get("/{engagement_id}/final-assembly/{archive_id}/download")
+def download_final_archive(
+    engagement_id: str,
+    archive_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng or not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=404, detail={"error": "Archive not found", "code": "NOT_FOUND"})
+    archive = db.query(FinalAuditArchive).filter(
+        FinalAuditArchive.archive_id == archive_id,
+        FinalAuditArchive.engagement_id == engagement_id
+    ).first()
+    if not archive or not os.path.exists(archive.file_storage_path):
+        raise HTTPException(status_code=404, detail={"error": "Archive file not found", "code": "NOT_FOUND"})
+    return FileResponse(archive.file_storage_path, filename=archive.archive_name)
+
+@router.get("/{engagement_id}/e-signatures", response_model=list[ESignatureOut])
+def list_e_signatures(
+    engagement_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "Access denied", "code": "INSUFFICIENT_ROLE"})
+    rows = db.query(ESignatureRequest).filter(
+        ESignatureRequest.engagement_id == engagement_id
+    ).order_by(ESignatureRequest.requested_at.desc()).all()
+    return [ESignatureOut.model_validate(row) for row in rows]
+
+@router.post("/{engagement_id}/e-signatures", response_model=dict, status_code=201)
+def create_e_signature_request(
+    engagement_id: str,
+    payload: ESignatureCreate,
+    current_user: User = Depends(require_roles("Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
+    if not eng:
+        raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
+    if eng.status in ("Archived", "Finalised"):
+        raise HTTPException(status_code=400, detail={"error": "Engagement is locked", "code": "ENGAGEMENT_LOCKED"})
+    if payload.wp_id:
+        wp = db.query(WorkingPaper).filter(
+            WorkingPaper.wp_id == payload.wp_id,
+            WorkingPaper.engagement_id == engagement_id,
+            WorkingPaper.is_deleted == False
+        ).first()
+        if not wp:
+            raise HTTPException(status_code=404, detail={"error": "Working paper not found", "code": "NOT_FOUND"})
+    req = ESignatureRequest(
+        engagement_id=engagement_id,
+        wp_id=payload.wp_id,
+        document_type=payload.document_type,
+        signer_name=payload.signer_name,
+        signer_email=payload.signer_email,
+        token=secrets.token_urlsafe(32),
+        requested_by=current_user.user_id,
+        requested_by_name=current_user.full_name,
+    )
+    db.add(req)
+    emit_event(db, "esignature.created", current_user.user_id, current_user.full_name,
+               engagement_id=engagement_id, payload={"request_id": req.request_id, "document_type": req.document_type})
+    db.commit()
+    db.refresh(req)
+    return {"data": ESignatureOut.model_validate(req), "message": "E-signature request created"}
+
+@router.post("/e-signatures/{request_id}/sign", response_model=dict)
+def sign_e_signature_request(
+    request_id: str,
+    payload: ESignatureSign,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ESignatureRequest).filter(ESignatureRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "E-signature request not found", "code": "NOT_FOUND"})
+    eng = db.query(Engagement).filter(Engagement.engagement_id == req.engagement_id).first()
+    if not eng or not can_access_engagement(eng, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "Access denied", "code": "INSUFFICIENT_ROLE"})
+    if req.status != "Pending":
+        raise HTTPException(status_code=400, detail={"error": "Request is not pending", "code": "VALIDATION_ERROR"})
+    req.status = "Signed"
+    req.signed_at = datetime.utcnow()
+    req.signed_by_name = payload.signer_name.strip() or current_user.full_name
+    req.signature_text = payload.signature_text.strip()
+    req.ip_address = request.client.host if request.client else None
+    emit_event(db, "esignature.signed", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id, "document_type": req.document_type})
+    db.commit()
+    db.refresh(req)
+    return {"data": ESignatureOut.model_validate(req), "message": "Document signed"}
+
+@router.patch("/e-signatures/{request_id}/cancel", response_model=dict)
+def cancel_e_signature_request(
+    request_id: str,
+    current_user: User = Depends(require_roles("Audit Manager", "Partner", "Admin")),
+    db: Session = Depends(get_db)
+):
+    req = db.query(ESignatureRequest).filter(ESignatureRequest.request_id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail={"error": "E-signature request not found", "code": "NOT_FOUND"})
+    if req.status != "Pending":
+        raise HTTPException(status_code=400, detail={"error": "Only pending requests can be cancelled", "code": "VALIDATION_ERROR"})
+    req.status = "Cancelled"
+    req.cancelled_at = datetime.utcnow()
+    req.cancelled_by = current_user.user_id
+    emit_event(db, "esignature.cancelled", current_user.user_id, current_user.full_name,
+               engagement_id=req.engagement_id, payload={"request_id": req.request_id})
+    db.commit()
+    db.refresh(req)
+    return {"data": ESignatureOut.model_validate(req), "message": "E-signature request cancelled"}
 
 @router.patch("/{engagement_id}/archive")
 def archive_engagement(

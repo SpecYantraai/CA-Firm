@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import re
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import Folder, WorkingPaper, Section, User, Engagement
@@ -14,8 +15,17 @@ router = APIRouter(tags=["folders"])
 MAX_DEPTH = 9
 INDEX_OVERRIDE_ROLES = ("Audit Manager", "Partner", "Admin")
 
+def index_sort_key(value: str | None):
+    if not value:
+        return [(1, "")]
+    parts = re.split(r"(\d+)", value.upper())
+    return [(0, int(part)) if part.isdigit() else (1, part) for part in parts if part]
+
 def build_folder_tree(folders: list, wps: list, parent_id=None) -> list:
-    children = [f for f in folders if f.parent_folder_id == parent_id and not f.is_deleted]
+    children = sorted(
+        [f for f in folders if f.parent_folder_id == parent_id and not f.is_deleted],
+        key=lambda f: (index_sort_key(f.wp_number), (f.folder_name or "").lower())
+    )
     result = []
     for f in children:
         open_count = sum(1 for wp in wps if wp.folder_id == f.folder_id and not wp.is_deleted
@@ -53,7 +63,10 @@ def build_folder_tree(folders: list, wps: list, parent_id=None) -> list:
                 created_at=wp.created_at,
                 updated_at=wp.updated_at,
                 open_notes_count=sum(1 for n in wp.review_notes if n.status == "Open")
-            ) for wp in wps if wp.folder_id == f.folder_id and not wp.is_deleted]
+            ) for wp in sorted(
+                [wp for wp in wps if wp.folder_id == f.folder_id and not wp.is_deleted],
+                key=lambda wp: (index_sort_key(wp.wp_number), (wp.filename or "").lower())
+            )]
         )
         result.append(fo)
     return result

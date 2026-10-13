@@ -27,12 +27,12 @@ export const statusBadgeClass = (status) => {
   return map[status] || 'badge badge-navy';
 };
 export const ENGAGEMENT_TYPES = [
-  { value: 'statutory-audit-corporate', label: 'Statutory audit - Corporate' },
-  { value: 'statutory-audit-non-corporate', label: 'Statutory audit - Non corporate' },
-  { value: 'tax-audit', label: 'Tax audit' },
-  { value: 'limited-review', label: 'Limited review' },
-  { value: 'certifications', label: 'Certifications' },
-  { value: 'other-assurance-related', label: 'Other Assurance engagements / Related services' },
+  { value: 'statutory-audit-corporate', label: 'Statutory audit - Corporate', description: 'Audit of books of account of companies and LLPs including tax audit.' },
+  { value: 'statutory-audit-non-corporate', label: 'Statutory audit - Non corporate', description: 'Audit of books of account of entities other than companies and LLPs including tax audit.' },
+  { value: 'tax-audit', label: 'Tax audit', description: 'Tax audits of entities whose books of account are audited by other CAs.' },
+  { value: 'limited-review', label: 'Limited review', description: 'Limited review of books of account.' },
+  { value: 'certifications', label: 'Certifications', description: 'Certification works.' },
+  { value: 'other-assurance-related', label: 'Other Assurance engagements / Related services', description: 'Compilation engagements, agreed upon procedures, and similar related services.' },
 ];
 export const engagementTypeName = (type) => {
   const map = {

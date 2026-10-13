@@ -48,7 +48,7 @@ def is_section_locked(db: Session, engagement_id: str, section_code: str) -> boo
     eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
     if not eng:
         return True
-    if eng.status == "Archived":
+    if eng.status in ("Archived", "Finalised"):
         return True
     if eng.workflow_override:
         return False
@@ -120,8 +120,8 @@ def ensure_engagement_editable(db: Session, engagement_id: str):
     eng = db.query(Engagement).filter(Engagement.engagement_id == engagement_id).first()
     if not eng:
         raise HTTPException(status_code=404, detail={"error": "Engagement not found", "code": "NOT_FOUND"})
-    if eng.status == "Archived":
-        raise HTTPException(status_code=400, detail={"error": "Engagement is archived", "code": "ENGAGEMENT_ARCHIVED"})
+    if eng.status in ("Archived", "Finalised"):
+        raise HTTPException(status_code=400, detail={"error": f"Engagement is {eng.status.lower()}", "code": "ENGAGEMENT_LOCKED"})
     return eng
 
 def ensure_section_editable(db: Session, engagement_id: str, section_code: str):
@@ -137,4 +137,3 @@ def can_prepare(engagement_role: str) -> bool:
 
 def can_review(engagement_role: str) -> bool:
     return engagement_role in ("Reviewer", "EQCR")
-

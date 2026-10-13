@@ -3,10 +3,9 @@ import { useDropzone } from 'react-dropzone';
 import { wpApi } from '../../api';
 import { useAuthStore } from '../../store';
 import { formatBytes, getErrorMessage, initials } from '../../utils';
-import { Upload, X, FileText, AlertCircle } from 'lucide-react';
+import { Upload, X, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const ALLOWED = '.xlsx,.xls,.docx,.doc,.pdf,.jpg,.jpeg,.png,.csv,.zip';
 const MAX_MB = 100;
 
 export default function UploadModal({ engagementId, folderId, onClose, onUploaded }) {

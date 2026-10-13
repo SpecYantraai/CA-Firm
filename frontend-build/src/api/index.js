@@ -16,6 +16,7 @@ export const authApi = {
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
   changePassword: (current_password, new_password) => api.post('/auth/change-password', { current_password, new_password }),
+  requestPasswordReset: (email) => api.post('/auth/request-password-reset', { email }),
 };
 export const engApi = {
   list: (params) => api.get('/engagements', { params }),
@@ -26,6 +27,22 @@ export const engApi = {
   rollforward: (id, data) => api.post(`/engagements/${id}/rollforward`, data),
   toggleWorkflowOverride: (id) => api.patch(`/engagements/${id}/toggle-workflow-override`),
   closureChecklist: (id) => api.get(`/engagements/${id}/closure-checklist`),
+  qualityChecks: (id) => api.get(`/engagements/${id}/quality-checks`),
+  clientRequests: (id, params) => api.get(`/engagements/${id}/client-requests`, { params }),
+  createClientRequest: (id, data) => api.post(`/engagements/${id}/client-requests`, data),
+  updateClientRequest: (request_id, data) => api.patch(`/engagements/client-requests/${request_id}`, data),
+  clientRequestComments: (request_id) => api.get(`/engagements/client-requests/${request_id}/comments`),
+  addClientRequestComment: (request_id, comment_text) => api.post(`/engagements/client-requests/${request_id}/comments`, { comment_text }),
+  uploadClientRequestFile: (request_id, formData) => api.post(`/engagements/client-requests/${request_id}/upload`, formData, { headers:{'Content-Type':'multipart/form-data'} }),
+  downloadClientRequestFile: (request_id) => api.get(`/engagements/client-requests/${request_id}/download`, { responseType:'blob' }),
+  remindClientRequest: (request_id) => api.post(`/engagements/client-requests/${request_id}/remind`),
+  finalAssembly: (id) => api.get(`/engagements/${id}/final-assembly`),
+  createFinalAssembly: (id, force = false) => api.post(`/engagements/${id}/final-assembly`, { force }),
+  downloadFinalArchive: (id, archive_id) => api.get(`/engagements/${id}/final-assembly/${archive_id}/download`, { responseType:'blob' }),
+  eSignatures: (id) => api.get(`/engagements/${id}/e-signatures`),
+  createESignature: (id, data) => api.post(`/engagements/${id}/e-signatures`, data),
+  signESignature: (request_id, data) => api.post(`/engagements/e-signatures/${request_id}/sign`, data),
+  cancelESignature: (request_id) => api.patch(`/engagements/e-signatures/${request_id}/cancel`),
   events: (id) => api.get(`/engagements/${id}/events`),
 };
 export const folderApi = {
@@ -38,7 +55,7 @@ export const wpApi = {
   list: (engagement_id, params) => api.get(`/engagements/${engagement_id}/wps`, { params }),
   upload: (engagement_id, formData) => api.post(`/engagements/${engagement_id}/wps`, formData, { headers:{'Content-Type':'multipart/form-data'} }),
   download: (wp_id) => api.get(`/wps/${wp_id}/download`, { responseType:'blob' }),
-  preview: (wp_id) => api.get(`/wps/${wp_id}/preview`, { responseType:'blob' }),
+  preview: (wp_id, version) => api.get(`/wps/${wp_id}/preview`, { responseType:'blob', params:{ v: version || Date.now() } }),
   editorConfig: (wp_id) => api.get(`/wps/${wp_id}/editor-config`),
   replace: (wp_id, formData) => api.post(`/wps/${wp_id}/replace`, formData, { headers:{'Content-Type':'multipart/form-data'} }),
   versions: (wp_id) => api.get(`/wps/${wp_id}/versions`),
@@ -46,6 +63,7 @@ export const wpApi = {
   update: (wp_id, data) => api.patch(`/wps/${wp_id}`, data),
   softDelete: (wp_id) => api.delete(`/wps/${wp_id}`),
   submit: (wp_id) => api.post(`/wps/${wp_id}/submit`),
+  bulkSubmit: (engagement_id, wp_ids) => api.post(`/engagements/${engagement_id}/wps/bulk-submit`, { wp_ids }),
   finalise: (wp_id) => api.post(`/wps/${wp_id}/finalise`),
   getNotes: (wp_id) => api.get(`/wps/${wp_id}/notes`),
   raiseNote: (wp_id, note_text) => api.post(`/wps/${wp_id}/notes`, { note_text }),
@@ -59,10 +77,19 @@ export const wpApi = {
 export const userApi = {
   list: () => api.get('/users'),
   create: (data) => api.post('/users', data),
+  update: (user_id, data) => api.patch(`/users/${user_id}`, data),
   deactivate: (user_id) => api.patch(`/users/${user_id}/deactivate`),
+  reactivate: (user_id) => api.patch(`/users/${user_id}/reactivate`),
+  resetPassword: (user_id) => api.post(`/users/${user_id}/reset-password`),
   assign: (engagement_id, user_id, role = 'Preparer') => api.post(`/users/${engagement_id}/assign`, { user_id, role }),
   assignments: (engagement_id) => api.get(`/users/${engagement_id}/assignments`),
+  removeAssignment: (engagement_id, assignment_id) => api.delete(`/users/${engagement_id}/assignments/${assignment_id}`),
 };
 export const searchApi = {
   search: (params) => api.get('/search', { params }),
+};
+export const settingsApi = {
+  editor: () => api.get('/settings/editor'),
+  updateEditor: (data) => api.patch('/settings/editor', data),
+  editorProviders: () => api.get('/settings/editor/providers'),
 };

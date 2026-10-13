@@ -42,6 +42,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
   const canFinalise = !archived && ['Partner','Audit Manager'].includes(user?.role);
   const canSubmit = !archived && ['Articled Assistant','Audit Executive'].includes(user?.role);
   const canUploadNew = !archived && !['EQCR Reviewer'].includes(user?.role);
+  const canDelete = !archived && !['EQCR Reviewer'].includes(user?.role);
   const canOverrideIndex = !archived && ['Audit Manager','Partner','Admin'].includes(user?.role);
   const canEditReviewerSignoff = !archived && ['Audit Manager','Partner','EQCR Reviewer','Admin'].includes(user?.role);
 
@@ -89,7 +90,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
       setEditorInfo(null);
     }
     try {
-      const r = await wpApi.preview(wp.wp_id);
+      const r = await wpApi.preview(wp.wp_id, wp.current_version);
       setPreviewUrl(URL.createObjectURL(r.data));
     } catch (err) {
       setPreviewError(getErrorMessage(err));
@@ -103,7 +104,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
     if (tab === 'versions') loadVersions();
     if (tab === 'links') loadLinks();
     if (tab === 'preview') loadViewer();
-  }, [tab, wp.wp_id]);
+  }, [tab, wp.wp_id, wp.current_version]);
 
   const handleDownload = async () => {
     try {
@@ -234,9 +235,22 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
       const r = await wpApi.replace(wp.wp_id, fd);
       toast.success(`Version ${r.data.data.current_version} uploaded`);
       setWP(r.data.data);
+      setTab('preview');
       onRefresh();
     } catch (err) { toast.error(getErrorMessage(err)); }
     e.target.value = '';
+  };
+
+  const handleDeleteWP = async () => {
+    if (!confirm('Delete this working paper from the active file explorer? The stored file is retained for compliance.')) return;
+    try {
+      await wpApi.softDelete(wp.wp_id);
+      toast.success('Working paper deleted from file explorer');
+      onRefresh();
+      onClose();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
   };
 
   const tabs = [
@@ -289,6 +303,11 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
               <input type="file" style={{ display:'none' }} onChange={handleReplaceFile}
                 accept=".xlsx,.xls,.docx,.doc,.pdf,.jpg,.jpeg,.png,.csv,.zip"/>
             </label>
+          )}
+          {canDelete && (
+            <button className="btn btn-danger btn-sm" onClick={handleDeleteWP}>
+              <Trash2 size={13}/> Delete File
+            </button>
           )}
           {!['EQCR Reviewer'].includes(user?.role) && !canEditReviewerSignoff && (
             <button className="btn btn-outline btn-sm" onClick={() => handleSignOff('Prepared By')}>
@@ -560,7 +579,11 @@ function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, ed
         </div>
       )}
 
-      {!loading && editorEnabled && (
+      {!loading && editorEnabled && editorInfo?.provider === 'collabora-code' && (
+        <iframe className="doc-editor-frame" src={editorInfo.launchUrl} title={`${wp.filename} editor`} />
+      )}
+
+      {!loading && editorEnabled && editorInfo?.provider !== 'collabora-code' && (
         <OnlyOfficeEditor editorInfo={editorInfo} wp={wp} />
       )}
 
@@ -579,7 +602,9 @@ function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, ed
           <PencilLine size={24}/>
           <div className="empty-state-title">Editing needs document server setup</div>
           <div className="empty-state-sub">
-            {previewError && canNativePreview ? previewError : editorMessage}
+            {previewError && canNativePreview
+              ? previewError
+              : `${editorMessage} Review notes can still be recorded in the Notes tab; Office preview/edit/comments require DOCUMENT_EDITOR_URL.`}
           </div>
           <button className="btn btn-navy btn-sm" onClick={onDownload}>
             <Download size={13}/> Download File
