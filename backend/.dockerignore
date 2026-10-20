@@ -8,3 +8,7 @@ uploads/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.private-agent-import/
+.agent-test-deps/
+.agent-test-env/
+.venv*/

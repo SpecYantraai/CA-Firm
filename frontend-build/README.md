@@ -1,16 +1,40 @@
-# React + Vite
+# Specentra AMS Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 and Vite 8 UI for the CA-Firm audit workspace, including the integrated
+**Agentic Risk Assessment** workflow for firm users and assigned client logins.
 
-Currently, two official plugins are available:
+## Agent Workspace
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Select an engagement and open **Risk Assessment**. The seven steps cover engagement
+context, financial uploads, materiality, thresholds, MCOTABD confirmation, the risk
+engine and editable CA gate review. Approved RCMs are written to Section 2000 and
+can be exported as JSON. Admin Settings includes knowledge-base controls and LLM
+connection status.
 
-## React Compiler
+The frontend replaces Streamlit widgets while the original Python agent remains
+unchanged. See the [main project README](../README.md) and
+[agent integration notes](../docs/RISK_ASSESSMENT_INTEGRATION.md).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Development
 
-## Expanding the ESLint configuration
+Use Node.js 20.19+ or 22.12+. From this directory:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
+The API defaults to `http://localhost:8000/api/v1`. Set `VITE_API_URL` in a local
+`.env` file to change it. The backend must allow the Vite origin in
+`ALLOWED_ORIGINS`. Configure LLM credentials on the backend, never in frontend
+environment variables.
+
+## Checks and Build
+
+```powershell
+npm.cmd run lint
+npm.cmd run build
+```
+
+Production output is generated in `dist/`. The UI includes persistent light/dark
+mode, the Specentra purple/lavender palette and responsive navigation.

@@ -1,307 +1,217 @@
-# Specentra AMS — Stage 1: File Explorer
+# Specentra AMS | Agentic Audit Workspace for CA Firms
 
-**Audit File Management System** for CA firms  
-On-premise · ICAI Compliant · 7-year retention · Soft-delete only
+Client-wise audit documentation and **Agentic Risk Assessment**, with a native
+React interface and CA-controlled approval. Select a client engagement and open
+the **Risk Assessment** tab. Both the firm team and assigned client logins can
+work on the engagement's saved assessment.
 
----
+## Agentic Risk Assessment
 
-## What is this?
+The integrated Risk Assessment Agent follows a **knowledge-base-first** approach:
+it retrieves risks and controls from the firm's knowledge base and uses the
+configured LLM to supplement gaps. An auditor reviews and edits the results before
+approval writes a working paper to **Section 2000 - Audit Planning**.
 
-Specentra AMS Stage 1 is a structured digital audit file explorer built for Chartered Accountant firms. It replaces network drives and folder systems with a compliant, structured environment ready for AI agents in Stage 2.
+| Step | Agent Workspace |
+| --- | --- |
+| 1. Engagement | Selected client and financial year, legal status, industry, products/services, and auditor risk considerations |
+| 2. Financials | Upload Excel or Word financial statements and inspect parsed financial inputs |
+| 3. Materiality | Review turnover, total assets and PBT; choose a benchmark, percentage, final figure and justification |
+| 4. Thresholds | Confirm rounded materiality, performance materiality (PM) and clearly trivial misstatement (CTM) |
+| 5. MCOTABD | Confirm material accounts, add accounts and set transaction counts for transaction verification thresholds (TVT) |
+| 6. Risk Engine | Run KB matching and LLM gap-filling; inspect source labels and execution history |
+| 7. CA Gate Review | Edit assertions, risks, grouped controls and substantive procedures; approve and export the RCM |
 
-**Key compliance features:**
-- ✅ Soft-delete only — no permanent deletion (DEC-006)
-- ✅ 7-year file retention enforcement (DEC-007)
-- ✅ On-premise storage — no files leave the server (NFR-016)
-- ✅ Permanent Prepared By / Final Reviewer attribution (FR-053)
-- ✅ Position-based hierarchical WP numbering (AMS-WP-NUM-001)
-- ✅ 5 auto-sections per engagement: 1000 / 2000 / 3000 / 4000 / 5000 (DEC-001)
-- ✅ Bcrypt password hashing, 8-hour session timeout (NFR-014, NFR-015)
-- ✅ Event bus built-in and agent-ready for Stage 2 (DEC-008)
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + Vite + Zustand + React Router |
-| Backend | Python 3.11 + FastAPI + SQLAlchemy |
-| Database | MySQL 8.0 |
-| Auth | JWT Bearer tokens + bcrypt (cost 12) |
-| File storage | On-premise server filesystem |
-
----
-
-## Prerequisites
-
-| Tool | Version | Download |
-|------|---------|----------|
-| Python | 3.11+ | https://python.org |
-| Node.js | 18+ | https://nodejs.org |
-| MySQL | 8.0+ | https://dev.mysql.com/downloads/ |
-
----
-
-## Quick Start (Windows)
-
-### Step 1 — MySQL Setup
-
-```sql
--- Run in MySQL Workbench or mysql CLI:
-CREATE DATABASE specentra CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'specentra'@'localhost' IDENTIFIED BY 'Specentra@2024';
-GRANT ALL PRIVILEGES ON specentra.* TO 'specentra'@'localhost';
-FLUSH PRIVILEGES;
+```mermaid
+flowchart LR
+    A[Select Client Engagement] --> B[Financial Statements]
+    B --> C[Materiality and Thresholds]
+    C --> D[Confirm MCOTABDs]
+    D --> E[Risk Assessment Agent]
+    K[Firm Knowledge Base] --> E
+    L[LLM Supplements Gaps] --> E
+    E --> R[CA Gate Review]
+    R --> P[Section 2000 Working Paper]
+    R --> J[RCM JSON Export]
 ```
 
-Or run the included script:
-```bash
-mysql -u root -p < database_setup.sql
+- Drafts persist separately for each engagement and can be resumed after reload.
+- Existing engagement assignments control client access. Revision checks prevent
+  one user's save from silently overwriting another user's changes.
+- Managers, partners and administrators can approve. EQCR reviewers have read-only
+  access to agent inputs. Engagement and section locks also apply.
+- Admin **Settings > Risk Assessment Agent** shows the provider, model, connection
+  status and knowledge-base details, and accepts replacement KB workbooks.
+- The supplied workbook contains **2,377 knowledge-base rows**. Runtime KB uploads
+  are stored separately from that original workbook.
+- The original **19 runtime files, prompts and workbook remain unchanged**.
+  SHA-256 checks verify source preservation. The original Streamlit application is
+  retained; the CA-Firm UI calls its engine through a separate API/process bridge.
+
+See [Agent Setup and Integration Details](docs/RISK_ASSESSMENT_INTEGRATION.md)
+for configuration, original parser behavior, persistence and verification.
+
+## Other Application Features
+
+- Engagement creation, financial-year organisation, assignments and roll-forward.
+- Structured audit files: 1000 Preconditions, 2000 Planning, 3000 Communications,
+  4000 Execution, 5000 Reporting and Miscellaneous.
+- Working-paper uploads, replacement versions, metadata, review notes, sign-offs,
+  bulk submission, search and soft deletion.
+- Rule-based review quality checks for missing sign-offs, stale files, open notes,
+  evidence links and other documentation gaps.
+- Final audit file assembly, ZIP archives, engagement locking and change history.
+- Client request lists with ownership, due dates, comments and document uploads.
+- Typed e-signature requests and approval records.
+- Admin controls for ONLYOFFICE and Collabora document editing providers.
+- Purple/lavender and navy visual theme, persistent light/dark mode and mobile
+  navigation.
+
+## Technology
+
+| Layer | Stack |
+| --- | --- |
+| Frontend | React 19, Vite 8, Zustand, React Router, Lucide |
+| Backend | FastAPI, SQLAlchemy, Pydantic |
+| Database | MySQL 8 |
+| Agent | Original Python Risk Assessment Agent, openpyxl, python-docx, structlog, tenacity |
+| LLM Providers | NVIDIA Nemotron, Anthropic or OpenAI, configured on the server |
+| Authentication | JWT bearer tokens and role/engagement access checks |
+| Storage | Server filesystem under `FILE_STORAGE_PATH`, plus database draft state |
+
+## Run Locally
+
+Use **Python 3.12** for the pinned backend dependencies, **Node.js 20.19+ or
+22.12+**, and **MySQL 8**. The commands below use Windows PowerShell.
+
+### 1. Get the Code and Prepare MySQL
+
+```powershell
+git clone https://github.com/pmbhatiya97/CA-Firm.git
+cd CA-Firm
 ```
 
-### Step 2 — Configure Backend
+Run [database_setup.sql](database_setup.sql) in MySQL Workbench to create the
+database and application user. Set a password for your installation and use the
+same credentials in the next step.
 
-Edit `backend/.env`:
-```env
-DATABASE_URL=mysql+pymysql://specentra:Specentra@2024@localhost:3306/specentra
-SECRET_KEY=your-secret-key-min-32-chars-change-this
-FILE_STORAGE_PATH=./uploads
-```
+### 2. Configure and Start the Backend
 
-### Step 3 — Start Backend
-
-Double-click **`start_backend.bat`** or run:
-```bash
+```powershell
 cd backend
-pip install -r requirements.txt
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m venv .venv
+Copy-Item .env.example .env
 ```
 
-Tables are auto-created on first run. Default users are seeded automatically.
+Edit `backend/.env` with your database credentials, application secret and agent
+configuration:
 
-### Step 4 — Start Frontend
+```dotenv
+DATABASE_URL=mysql+pymysql://specentra:YOUR_URL_ENCODED_PASSWORD@localhost:3306/specentra
+SECRET_KEY=replace-with-a-long-random-secret
+FILE_STORAGE_PATH=./uploads
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-Double-click **`start_frontend.bat`** or run:
-```bash
+LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=your-provider-key
+LLM_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+```
+
+Use `LLM_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=openai`
+with `OPENAI_API_KEY`, and choose a model for that provider. The agent uses the
+configured external provider for supplementary risk generation. Credentials are
+server-side and are not included in Git or returned to the browser.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+`requirements.txt` includes `requirements-agent.txt`. Install with the **same
+Python interpreter that runs the backend**. Tables, including agent draft
+storage, are created by normal backend startup.
+
+### 3. Start the Frontend
+
+Open a second terminal at the repository root:
+
+```powershell
 cd frontend-build
-npm install
-npm run dev
+npm.cmd ci
+npm.cmd run dev
 ```
 
-### Step 5 — Open Browser
+Open the URL printed by Vite, normally [http://localhost:5173](http://localhost:5173).
+If Vite chooses another port, include that origin in `ALLOWED_ORIGINS` and restart
+the backend. The frontend defaults to `http://localhost:8000/api/v1`; set
+`VITE_API_URL` in `frontend-build/.env` when using another API address.
 
-Navigate to: **http://localhost:5173**
+API documentation: [http://localhost:8000/api/docs](http://localhost:8000/api/docs).
 
----
+### 4. Open the Agent
 
-## Default Login Credentials
+Sign in, select an engagement, then open **Risk Assessment**. In Admin Settings,
+check that the knowledge base is loaded and the provider key is configured.
+Complete the seven-step workflow and have a firm manager, partner or administrator
+approve the gate review.
 
-| Role | Email | Password |
-|------|-------|----------|
+| Seeded Role | Email | Initial Password |
+| --- | --- | --- |
 | Admin | admin@specentra.com | Admin@123 |
 | Partner | partner@specentra.com | Partner@123 |
 
-> ⚠️ Change all passwords before going live.
+Change seeded passwords and application secrets before deployment. Assign client
+logins to the engagements they should access.
 
----
+## Project Layout
 
-## Company Logo Setup
-
-To add your firm's logo:
-
-1. Place your logo file in `frontend-build/public/logo.png` (PNG, SVG, or WebP)
-2. Open `frontend-build/src/components/layout/Sidebar.jsx`
-3. Find the comment block `COMPANY LOGO PATH` (around line 30)
-4. Replace:
-   ```jsx
-   <div className="logo-mark">S</div>
-   ```
-   With:
-   ```jsx
-   <img src="/logo.png" alt="Your Firm Name" style={{ height: 36 }} />
-   ```
-5. Replace `Specentra` with your firm name in the `logo-name` div
-6. Rebuild frontend: `cd frontend-build && npm run build`
-
----
-
-## Project Structure
-
-```
-specentra/
-├── backend/
-│   ├── main.py                    # FastAPI entry point + DB seed
-│   ├── requirements.txt
-│   ├── .env                       # ← configure your DB here
-│   └── app/
-│       ├── api/v1/endpoints/
-│       │   ├── auth.py            # Login, logout, change password
-│       │   ├── engagements.py     # CRUD + archive + rollforward
-│       │   ├── folders.py         # Folder tree, create, rename, delete
-│       │   ├── wps.py             # Upload, download, review, notes, signoff
-│       │   ├── search.py          # Full-text search + closure checklist
-│       │   └── users.py           # User management
-│       ├── core/
-│       │   ├── config.py          # Settings, section codes, closure checklist
-│       │   ├── database.py        # SQLAlchemy engine + session
-│       │   ├── security.py        # JWT + bcrypt
-│       │   └── deps.py            # Auth dependencies + role checks
-│       ├── models/models.py       # All DB models (16 tables)
-│       ├── schemas/schemas.py     # Pydantic request/response schemas
-│       └── services/
-│           ├── numbering.py       # WP Numbering Engine (AMS-WP-NUM-001)
-│           └── events.py          # Event bus (agent-ready for Stage 2)
-│
-├── frontend-build/
-│   ├── src/
-│   │   ├── api/index.js           # Axios client + all API calls
-│   │   ├── store/index.js         # Zustand state + permissions
-│   │   ├── utils/index.js         # Formatters, helpers
-│   │   ├── pages/
-│   │   │   ├── LoginPage.jsx
-│   │   │   ├── DashboardPage.jsx
-│   │   │   ├── EngagementsPage.jsx
-│   │   │   ├── EngagementDetailPage.jsx  # File explorer + tree
-│   │   │   ├── SearchPage.jsx
-│   │   │   └── UsersPage.jsx
-│   │   └── components/
-│   │       ├── layout/Sidebar.jsx         # ← LOGO GOES HERE
-│   │       ├── wps/WPDetailPanel.jsx      # Notes, versions, signoff
-│   │       ├── wps/UploadModal.jsx        # Drag & drop upload
-│   │       ├── folders/CreateFolderModal.jsx
-│   │       ├── closure/ClosureChecklistModal.jsx
-│   │       └── engagements/RollForwardModal.jsx
-│   └── dist/                      # Production build (pre-built)
-│
-├── database_setup.sql
-├── start_backend.bat              # Windows: start backend
-├── start_frontend.bat             # Windows: start frontend dev server
-├── start_all.sh                   # Linux/Mac: start both
-└── README.md
+```text
+backend/
+  main.py                           FastAPI startup and database setup
+  requirements-agent.txt            Native agent dependencies
+  agent_bridge/worker.py            Isolated transport to the original engine
+  agent_bridge/source-sha256.json    Original agent integrity manifest
+  vendor/ams_ra/                    Unmodified supplied agent and knowledge base
+  app/api/v1/endpoints/risk_agent.py Engagement-scoped agent API
+  app/services/risk_agent.py        Draft storage, process calls and run handling
+  tests/test_risk_agent.py          Agent integration and integrity tests
+frontend-build/
+  src/components/agents/           Native agent workspace and admin controls
+  src/pages/EngagementDetailPage.jsx Client engagement tabs
+docs/
+  RISK_ASSESSMENT_INTEGRATION.md     Detailed integration and setup notes
 ```
 
----
+## Verification
 
-## API Endpoints
+```powershell
+# From frontend-build
+npm.cmd run lint
+npm.cmd run build
 
-Base URL: `http://localhost:8000/api/v1`
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /auth/login | Login |
-| GET | /engagements | List engagements |
-| POST | /engagements | Create engagement (5 sections auto-created) |
-| GET | /engagements/:id | Get engagement with sections |
-| PATCH | /engagements/:id/archive | Archive (Partner only, checklist enforced) |
-| PATCH | /engagements/:id/reopen | Reopen archived |
-| POST | /engagements/:id/rollforward | Roll forward to new FY |
-| GET | /engagements/:id/folders | Full folder tree |
-| POST | /engagements/:id/folders | Create folder (WP number auto-assigned) |
-| PATCH | /folders/:id | Rename folder |
-| DELETE | /folders/:id | Delete empty folder |
-| POST | /engagements/:id/wps | Upload WP (multipart) |
-| GET | /wps/:id/download | Download WP |
-| POST | /wps/:id/replace | Upload new version |
-| GET | /wps/:id/versions | Version history |
-| POST | /wps/:id/submit | Submit for review |
-| POST | /wps/:id/finalise | Finalise WP |
-| GET | /wps/:id/notes | Get review notes |
-| POST | /wps/:id/notes | Raise review note |
-| PATCH | /notes/:id/close | Close review note |
-| POST | /wps/:id/signoff | Record sign-off |
-| GET | /search | Search engagements + WPs |
-| GET | /engagements/:id/closure-checklist | 16-item closure checklist |
-| GET | /users | List users |
-| POST | /users | Create user |
-| PATCH | /users/:id/deactivate | Deactivate user |
-
-Full interactive docs: **http://localhost:8000/api/docs**
-
----
-
-## User Roles
-
-| Role | Create Eng | Archive | Upload WP | Raise Note | Finalise |
-|------|-----------|---------|-----------|-----------|---------|
-| Articled Assistant | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Audit Executive | ❌ | ❌ | ✅ | ✅ | ❌ |
-| Audit Manager | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Partner | ✅ | ✅ | ✅ | ✅ | ✅ |
-| EQCR Reviewer | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Admin | ✅ | ❌ | ✅ | ✅ | ❌ |
-
----
-
-## WP Numbering (AMS-WP-NUM-001)
-
-Numbers are **position-based addresses**, not sequences:
-
-```
-2000 — Audit Planning
-├── 2001  Audit Strategy.xlsx          ← Level 1
-├── 2002  Audit Plan.xlsx
-│   ├── 2002.01  RAAP-Understanding.xlsx  ← Level 2
-│   ├── 2002.02  RAAP-Controls.xlsx
-│   └── 2002.03  Questionnaires/
-│       ├── 2002.03A  Mgmt-Q.xlsx        ← Level 3 (suffix)
-│       └── 2002.03B  Ops-Q.xlsx
-└── 2003  Risk Assessment.xlsx
+# From backend, using the backend virtual environment
+.\.venv\Scripts\python.exe -m pip install httpx
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_risk_agent.py -v
 ```
 
-- Moving an item changes its number
-- Revising a file keeps the same number
-- Staff can override — conflict check prevents duplicates
-- Numbers are scoped per engagement (no cross-engagement conflicts)
+The backend suite checks source integrity, calculation/parser parity, engagement
+access, conflicting revisions, upload validation, locks, review edits and approved
+working-paper/export persistence. Its engine test uses a substitute LLM and does
+not call external providers. Desktop/mobile UI workflows have also been checked
+with sample API responses. A live LLM run requires a valid configured provider key.
 
----
+## Deployment and Current Boundaries
 
-## Closure Checklist (16 items)
+Build the frontend and serve `frontend-build/dist` with your web server. Run the
+backend with persistent MySQL and filesystem storage. A backend Dockerfile is
+included; configure environment variables/secrets and a persistent upload volume.
+Local `.env` files, private imported configuration, test dependencies and uploaded
+audit documents are excluded from source control and Docker build context.
 
-The system checks all 16 items before archiving is permitted:
-
-| ID | Section | Check |
-|----|---------|-------|
-| CL-1001 | 1000 | Independence declaration present |
-| CL-1002 | 1000 | Client acceptance/continuance present |
-| CL-1003 | 1000 | Engagement letter present |
-| CL-2001 | 2000 | Audit strategy present |
-| CL-2002 | 2000 | Audit plan present |
-| CL-2003 | 2000 | Risk assessment + audit programme |
-| CL-2004 | 2000 | Materiality calculation |
-| CL-3001 | 3000 | Management representation letter |
-| CL-3002 | 3000 | Significant findings documented |
-| CL-4001 | 4000 | At least 1 WP per audit area |
-| CL-4002 | 4000 | All WPs have Prepared By |
-| CL-4003 | 4000 | No WP in Draft/Submitted status |
-| CL-5001 | 5000 | Draft audit report present |
-| CL-5002 | 5000 | Final audit report present |
-| CL-E001 | All | All review notes closed |
-| CL-E002 | All | Partner sign-off on each section |
-
----
-
-## Production Deployment (Windows Server)
-
-1. Install Python, Node.js, MySQL on the server
-2. Run `database_setup.sql`
-3. Configure `backend/.env` with production values
-4. Build frontend: `cd frontend-build && npm run build`
-5. Serve `frontend-build/dist/` via IIS or nginx
-6. Run backend: `python -m uvicorn main:app --host 0.0.0.0 --port 8000`
-7. Use a process manager (NSSM) to run uvicorn as a Windows service
-
----
-
-## Stage 2 Readiness
-
-The event bus is already built. Every significant action emits a structured event:
-- `engagement.created`, `wp.uploaded`, `review.submitted`
-- `note.raised`, `note.closed`, `engagement.archived`
-
-In Stage 2, AI agents (A1 Intake → A2 Planning → A3 Analyse → A4 Docs) will subscribe to this bus. No backend changes needed — the architecture is agent-ready from day one (DEC-008).
-
----
-
-*Specentra AMS v1.0 — Stage 1 File Explorer — AMS-FR-001 v1.0*  
-*ICAI Compliant · On-premise · Soft-delete only · 7-year retention*
+The original agent's parsing rules, financial layout assumptions, units and
+calculation behavior are intentionally preserved; see the integration notes.
+The client request list currently sits within the authenticated app, reminder
+actions are recorded rather than emailed, and typed signatures are not a certified
+digital-signature service. Office editing requires a reachable editor server.
+Retention configuration and archive export are available; automatic retention
+enforcement and a compliance certification are not claimed by this repository.
