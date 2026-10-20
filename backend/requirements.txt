@@ -11,3 +11,4 @@ python-dotenv==1.0.1
 alembic==1.13.3
 pydantic-settings==2.5.2
 pydantic[email]==2.9.2
+-r requirements-agent.txt

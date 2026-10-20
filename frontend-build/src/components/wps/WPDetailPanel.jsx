@@ -262,7 +262,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
   ];
 
   return (
-    <div style={{ width:'45%', display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg-card)', height:'100%' }}>
+    <div className="wp-detail-panel" style={{ width:'45%', display:'flex', flexDirection:'column', overflow:'hidden', background:'var(--bg-card)', height:'100%' }}>
       {/* Panel header */}
       <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:'var(--bg-table-head)' }}>
         <div style={{ flex:1, minWidth:0 }}>
@@ -280,7 +280,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
           <button className="btn btn-outline btn-sm" onClick={handleDownload} title="Download">
             <Download size={13}/> Download
           </button>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={16}/></button>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Close working paper" title="Close working paper"><X size={16}/></button>
         </div>
       </div>
 

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Menu, X } from 'lucide-react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store';
@@ -10,6 +12,7 @@ import SearchPage from './pages/SearchPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import './index.css';
+import './theme.css';
 
 function ProtectedRoute({ children }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -18,9 +21,17 @@ function ProtectedRoute({ children }) {
 }
 
 function AppLayout({ children }) {
+  const [navigationOpen, setNavigationOpen] = useState(false);
   return (
-    <div className="app-shell">
-      <Sidebar />
+    <div className={`app-shell ${navigationOpen ? 'navigation-open' : ''}`}>
+      <div className="mobile-topbar">
+        <div className="specentra-wordmark"><b>Spec</b>entra</div>
+        <button className="btn btn-icon btn-ghost" onClick={() => setNavigationOpen(!navigationOpen)} aria-label={navigationOpen ? 'Close navigation' : 'Open navigation'} title={navigationOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={navigationOpen} aria-controls="app-navigation">
+          {navigationOpen ? <X size={20}/> : <Menu size={20}/>}
+        </button>
+      </div>
+      {navigationOpen && <button className="navigation-backdrop" aria-label="Close navigation" onClick={() => setNavigationOpen(false)}/>}
+      <Sidebar onNavigate={() => setNavigationOpen(false)} />
       <div className="main-content">{children}</div>
     </div>
   );
@@ -33,7 +44,7 @@ export default function App() {
         position="top-right"
         toastOptions={{
           duration: 3500,
-          style: { fontFamily:"'Inter',system-ui,sans-serif",fontSize:13,borderRadius:8,boxShadow:'0 4px 16px rgba(15,30,56,0.15)' },
+          style: { fontFamily:"'IBM Plex Sans',system-ui,sans-serif",fontSize:13,borderRadius:8,background:'var(--bg-card)',color:'var(--text-primary)',border:'1px solid var(--border)',boxShadow:'var(--shadow-md)' },
           success: { iconTheme: { primary:'#1a9e5e',secondary:'#fff' } },
           error: { iconTheme: { primary:'#d03545',secondary:'#fff' } },
         }}

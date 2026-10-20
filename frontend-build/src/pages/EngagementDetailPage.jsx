@@ -17,6 +17,7 @@ import UploadModal from '../components/wps/UploadModal';
 import CreateFolderModal from '../components/folders/CreateFolderModal';
 import ClosureChecklistModal from '../components/closure/ClosureChecklistModal';
 import RollForwardModal from '../components/engagements/RollForwardModal';
+import RiskAssessmentPanel from '../components/agents/RiskAssessmentPanel';
 
 function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, archived, locked, selectedWpIds, onToggleWP }) {
   const [open, setOpen] = useState(depth === 0);
@@ -54,7 +55,7 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
           onClick={() => setOpen(!open)}>
           {open ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
         </button>
-        {open ? <FolderOpen size={15} style={{ color:'#415166',flexShrink:0 }}/> : <Folder size={15} style={{ color:'#415166',flexShrink:0 }}/>}
+        {open ? <FolderOpen size={15} style={{ color:'var(--text-secondary)',flexShrink:0 }}/> : <Folder size={15} style={{ color:'var(--text-secondary)',flexShrink:0 }}/>}
         {folder.wp_number && (
           <span className="wp-number" style={{ fontSize:10 }}>{folder.wp_number}</span>
         )}
@@ -290,21 +291,22 @@ export default function EngagementDetailPage() {
       {/* Tabs */}
       <div style={{ background:'var(--bg-card)',borderBottom:'1px solid var(--border)',paddingLeft:28,flexShrink:0 }}>
         <div className="tabs" style={{ borderBottom:'none' }}>
-          {['files', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
+          {['files', 'agent', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`}
               onClick={() => setActiveTab(tab)}>
-              {tab === 'files' ? 'File Explorer' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
+              {tab === 'files' ? 'File Explorer' : tab === 'agent' ? 'Risk Assessment' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
             </button>
           ))}
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ flex:1,display:'flex',overflow:'hidden' }}>
+      <div className="engagement-workspace" style={{ flex:1,display:'flex',overflow:'hidden' }}>
+        {activeTab === 'agent' && <RiskAssessmentPanel key={id} engagement={engagement} archived={locked} onPublished={load}/>}
         {activeTab === 'files' && (
           <>
             {/* Folder tree */}
-            <div style={{ width: selectedWP ? '55%' : '100%', overflow:'hidden', display:'flex', flexDirection:'column', transition:'width .2s', borderRight: selectedWP ? '1px solid var(--border)' : 'none' }}>
+            <div className={`engagement-file-pane ${selectedWP ? 'is-detail-open' : ''}`} style={{ width: selectedWP ? '55%' : '100%', overflow:'hidden', display:'flex', flexDirection:'column', transition:'width .2s', borderRight: selectedWP ? '1px solid var(--border)' : 'none' }}>
               <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
                 {locked && (
                   <div style={{ background:'var(--amber-bg)',border:'1px solid rgba(212,131,10,.2)',borderRadius:'var(--r-md)',padding:'10px 14px',fontSize:12,color:'var(--amber)',display:'flex',alignItems:'center',gap:8 }}>

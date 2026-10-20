@@ -1,0 +1,2 @@
+# Preserve the supplied agent byte-for-byte across Windows/Linux checkouts.
+backend/vendor/ams_ra/** -text

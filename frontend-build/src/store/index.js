@@ -1,6 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('sp-theme', theme); } catch { /* Storage can be disabled by the browser. */ }
+}
+
+let initialTheme = 'light';
+try { initialTheme = localStorage.getItem('sp-theme') === 'dark' ? 'dark' : 'light'; } catch { /* Use the default theme. */ }
+applyTheme(initialTheme);
+
+export const useThemeStore = create(set => ({
+  theme: initialTheme,
+  setTheme: theme => { applyTheme(theme); set({ theme }); },
+}));
+
 export const useAuthStore = create(
   persist(
     (set) => ({

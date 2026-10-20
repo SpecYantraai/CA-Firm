@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore, useAppStore } from '../../store';
 import { initials } from '../../utils';
 import toast from 'react-hot-toast';
+import ThemeToggle from '../ThemeToggle';
 import {
   LayoutDashboard, FolderOpen, Search, Users, LogOut, Settings
 } from 'lucide-react';
@@ -17,7 +18,7 @@ const ADMIN_ITEMS = [
   { label: 'Settings', icon: Settings, to: '/settings' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const currentEngagement = useAppStore((s) => s.currentEngagement);
@@ -32,7 +33,7 @@ export default function Sidebar() {
   const canManageUsers = ['Admin'].includes(user?.role);
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" id="app-navigation" aria-label="Main navigation">
       {/* Logo — replace img src with your company logo path */}
       <div className="sidebar-logo">
         <div className="logo-fallback">
@@ -48,8 +49,8 @@ export default function Sidebar() {
               And replace the logo-name below with your firm name.
               ────────────────────────────────────────────────
             */}
-            <div className="logo-name">Specentra</div>
-            <div className="logo-sub">AMS · Stage 1</div>
+            <div className="logo-name specentra-wordmark"><b>Spec</b>entra</div>
+            <div className="logo-sub">Audit Management System</div>
           </div>
         </div>
       </div>
@@ -69,6 +70,7 @@ export default function Sidebar() {
         {NAV_ITEMS.map(({ label, icon: Icon, to }) => (
           <NavLink
             key={to}
+            onClick={onNavigate}
             to={to}
             end={to === '/'}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -84,6 +86,7 @@ export default function Sidebar() {
             {ADMIN_ITEMS.map(({ label, icon: Icon, to }) => (
               <NavLink
                 key={to}
+                onClick={onNavigate}
                 to={to}
                 className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
               >
@@ -95,21 +98,22 @@ export default function Sidebar() {
         )}
 
         <div className="nav-section-label" style={{ marginTop: 8 }}>Compliance</div>
-        <div style={{ padding:'8px 10px',fontSize:10,color:'rgba(255,255,255,.25)',lineHeight:1.5 }}>
-          On-premise storage · Soft-delete only · 7-year retention · ICAI compliant
+        <div className="sidebar-compliance">
+          Audit documentation &amp; review
         </div>
       </nav>
 
       {/* User footer */}
       <div className="sidebar-bottom">
-        <div className="sidebar-user" onClick={handleLogout} title="Sign out">
+        <ThemeToggle />
+        <button type="button" className="sidebar-user" onClick={handleLogout} title="Sign out" aria-label={`Sign out ${user?.full_name || ''}`}>
           <div className="user-avatar">{user?.initials || initials(user?.full_name)}</div>
           <div className="user-info">
             <div className="user-name">{user?.full_name}</div>
             <div className="user-role">{user?.role}</div>
           </div>
-          <LogOut size={14} style={{ color:'rgba(255,255,255,.3)', flexShrink:0 }} />
-        </div>
+          <LogOut size={16} className="sidebar-logout" />
+        </button>
       </div>
     </aside>
   );

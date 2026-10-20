@@ -1,0 +1,21 @@
+{
+  ".env.example": "bf4c34d044995a706ad518ddefbc9bc4f82f82ebe2723a09fba31bc32bfde734",
+  "agents/base_agent.py": "fff41bccb66238db4882430550cc6a1a41dacf49719a026ad8c6c99dd3b11e27",
+  "agents/risk_assessment_agent.py": "12be946e74b6e07357c52ca9ae965667f668f10928c30929089bd53dc2f333c7",
+  "agents/__init__.py": "d0b04aea83248df70e0e6a9d0bd56ed0c411203dd38fb1365ca7c06522e8a771",
+  "app.py": "644985132151ae80c1d52c2b53530af2877c0e81d8e8f7372163783997f7ad72",
+  "data/knowledge_base.xlsx": "111d149979c15704da9af0c4c050e06e7a405ab899997bcaf402b2838d76bf8a",
+  "llm/client.py": "b0cd3883012f5e0c2c9e8f5761552deebb95be327d86d8efc0fad4171fff407f",
+  "llm/__init__.py": "9c18c2c1105c15293ef1a5c5e1d165c65142a15bc891909795b1c32145b33a0f",
+  "models/__init__.py": "4b7b90747d219ff4e09fe1c70912c2a3644a2f8a617a955e056a3f3b2de445cb",
+  "prompts/agents/ra-supplement.md": "296d2f72bfb8af90c28bc4f4284d4a4b6b9f597d568cbb14510b760e6015af2f",
+  "prompts/l1-universal.md": "1bb43bb9adfbe6859e05414f9fbdae7698cf1c9d1b4833cfafcdc74c720bb05e",
+  "prompts/l2-audit-domain.md": "902f95b23865ab616fd5ee7232612ed50ba72bcdc5d9b0611a7d58828e1729dd",
+  "requirements.txt": "8b1651f4e0b7b30b7c04b658a0aa1d0021d3c428f75c12b803ccf9391250ccac",
+  "utils/document_parser.py": "bd659b8f9d08c7d0d07310722d543a8aa4051579d358c622f67508f6188f20bd",
+  "utils/financial_parser.py": "cce0197c97eb69a80d15380f0900b7d049f33346554fb37386d1089933e6edfb",
+  "utils/knowledge_base.py": "b3345a501dc6be3511f596ff028d060f23704154ce3d2f606d331573cd41f923",
+  "utils/materiality.py": "46746410b59ed3977f4d9561889a4fadd0d460c46d6d741ee1c4bbb71e1778d3",
+  "utils/thresholds.py": "3734b5c207d191a51e8b937f7bc8644029e6d086544daf7f1337780650e6dc65",
+  "utils/__init__.py": "45184f5bb87c9a12663774004df6685ad564a5551cc878e9a7a0431526d3d656"
+}

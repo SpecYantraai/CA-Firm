@@ -93,3 +93,12 @@ export const settingsApi = {
   updateEditor: (data) => api.patch('/settings/editor', data),
   editorProviders: () => api.get('/settings/editor/providers'),
 };
+
+export const riskAgentApi = {
+  configuration: () => api.get('/agents/risk-assessment/config'),
+  uploadKnowledgeBase: data => api.post('/agents/risk-assessment/knowledge-base', data),
+  get: id => api.get(`/engagements/${id}/risk-agent`),
+  save: (id, operation, data) => api.post(`/engagements/${id}/risk-agent/${operation}`, data, { timeout: 150000 }),
+  upload: (id, data) => api.post(`/engagements/${id}/risk-agent/financials`, data, { timeout: 150000 }),
+  export: id => api.get(`/engagements/${id}/risk-agent/export`, { responseType: 'blob' }),
+};

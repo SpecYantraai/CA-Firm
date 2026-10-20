@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.agent-test-deps/
+.agent-test-env/
+.private-agent-import/
+.venv*/
 
 # Node
 node_modules/

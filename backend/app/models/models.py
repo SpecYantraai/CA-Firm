@@ -58,6 +58,15 @@ class EngagementUser(Base):
     assigned_at = Column(DateTime, server_default=func.now())
     assigned_by = Column(String(36), nullable=True)
 
+
+class RiskAssessmentSession(Base):
+    __tablename__ = "risk_assessment_sessions"
+    engagement_id = Column(String(36), ForeignKey("engagements.engagement_id"), primary_key=True)
+    revision = Column(Integer, nullable=False, default=1)
+    state = Column(JSON, nullable=False)
+    updated_by = Column(String(36), nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
 class Section(Base):
     __tablename__ = "sections"
     section_id = Column(String(36), primary_key=True, default=gen_uuid)

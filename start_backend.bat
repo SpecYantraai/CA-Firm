@@ -11,7 +11,12 @@ echo ============================================================
 echo.
 
 echo [1/3] Checking dependencies...
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+if errorlevel 1 (
+    echo Dependency installation failed. The backend has not been started.
+    pause
+    exit /b 1
+)
 
 echo [2/3] Upload directory ready.
 if not exist "uploads" mkdir uploads
