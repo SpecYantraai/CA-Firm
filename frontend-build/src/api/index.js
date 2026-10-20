@@ -7,7 +7,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 api.interceptors.response.use((res) => res, (err) => {
-  if (err.response?.status === 401) { localStorage.removeItem('specentra_token'); window.location.href = '/login'; }
+  if (err.response?.status === 401 && err.config?.url !== '/auth/login') { localStorage.removeItem('specentra_token'); window.location.href = '/login'; }
   return Promise.reject(err);
 });
 export default api;
@@ -92,6 +92,9 @@ export const settingsApi = {
   editor: () => api.get('/settings/editor'),
   updateEditor: (data) => api.patch('/settings/editor', data),
   editorProviders: () => api.get('/settings/editor/providers'),
+  agentModel: () => api.get('/settings/ai-agents'),
+  updateAgentModel: data => api.put('/settings/ai-agents', data),
+  testAgentModel: data => api.post('/settings/ai-agents/test', data, { timeout: 45000 }),
 };
 
 export const riskAgentApi = {

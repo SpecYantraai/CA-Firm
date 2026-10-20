@@ -26,6 +26,25 @@ def serializable(value):
     return value
 
 
+def apply_model_configuration(config):
+    if not config:
+        return
+    provider = "openai" if config["provider"] == "openai-compatible" else config["provider"]
+    os.environ.update(LLM_PROVIDER=provider, LLM_MODEL=config["model"], LLM_TIMEOUT_SECONDS=str(config["timeout_seconds"]))
+    if config.get("api_key") is not None:
+        key_name = {"nvidia": "NVIDIA_API_KEY", "openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[provider]
+        os.environ[key_name] = config["api_key"]
+
+
+def build_llm_client(config):
+    from llm.client import LLMClient
+    client = LLMClient()
+    if config:
+        client._provider.client.base_url = config["base_url"]
+        client._provider.client.timeout = config["timeout_seconds"]
+    return client
+
+
 def dispatch(request):
     from dotenv import dotenv_values, load_dotenv
     load_dotenv(BACKEND / ".env")
@@ -33,6 +52,8 @@ def dispatch(request):
     for key, value in dotenv_values(private_config).items():
         if key in {"LLM_PROVIDER", "LLM_MODEL", "LLM_TIMEOUT_SECONDS", "LLM_MAX_RETRIES", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LOG_LEVEL"} and key not in os.environ and value:
             os.environ[key] = value
+    model_config = request.get("model_configuration")
+    apply_model_configuration(model_config)
     from utils import knowledge_base as kb
     if request.get("knowledge_base_path"):
         kb.KB_PATH = Path(request["knowledge_base_path"])
@@ -54,8 +75,22 @@ def dispatch(request):
         defaults = {"nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b", "anthropic": "claude-sonnet-4-6", "openai": "gpt-4o"}
         return {"knowledge_base": kb.get_kb_stats(), "provider": provider,
                 "model": os.environ.get("LLM_MODEL", defaults.get(provider, "")),
+                "base_url": model_config["base_url"] if model_config else {"nvidia": "https://integrate.api.nvidia.com/v1", "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"), "anthropic": os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")}.get(provider, ""),
+                "configuration_source": "admin" if model_config else "server",
+                "timeout_seconds": int(os.environ.get("LLM_TIMEOUT_SECONDS", "60")),
+                "configured_provider": model_config["provider"] if model_config else provider,
                 "key_configured": bool(key_name and os.environ.get(key_name)),
                 "provider_supported": key_name is not None}
+    if operation == "test_connection":
+        try:
+            client = build_llm_client(model_config)
+            response = client._provider.client.with_options(timeout=15, max_retries=0).models.list()
+            ids = [item.id for item in response.data]
+            return {"connected": True, "model_listed": client.model_name in ids if ids else None}
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            message = f"Provider connection failed (HTTP {status}). Check the API key and API base URL." if status else "Could not connect to the model provider. Check the API base URL, key, and network connection."
+            raise RuntimeError(message) from None
     if operation == "industry":
         matched, exact = kb.match_industry(data["industry"])
         return {"matched_industry": matched, "exact_match": exact}
@@ -119,9 +154,8 @@ def dispatch(request):
     if operation == "tvt":
         return {name: calculate_tvt(data["pm"], count) for name, count in data["counts"].items()}
     if operation == "run":
-        from llm.client import LLMClient
         from agents.risk_assessment_agent import RiskAssessmentAgent
-        return RiskAssessmentAgent(llm_client=LLMClient()).run(data)
+        return RiskAssessmentAgent(llm_client=build_llm_client(model_config)).run(data)
     raise ValueError("Unsupported bridge operation")
 
 

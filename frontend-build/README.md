@@ -5,11 +5,11 @@ React 19 and Vite 8 UI for the CA-Firm audit workspace, including the integrated
 
 ## Agent Workspace
 
-Select an engagement and open **Risk Assessment**. The seven steps cover engagement
+Select an engagement and open **Risk Assessment Agent**. The seven steps cover engagement
 context, financial uploads, materiality, thresholds, MCOTABD confirmation, the risk
 engine and editable CA gate review. Approved RCMs are written to Section 2000 and
-can be exported as JSON. Admin Settings includes knowledge-base controls and LLM
-connection status.
+can be exported as JSON. The admin **AI Agent Configuration** page manages the
+provider, model, endpoint, encrypted API key, timeout and knowledge base.
 
 The frontend replaces Streamlit widgets while the original Python agent remains
 unchanged. See the [main project README](../README.md) and

@@ -4,7 +4,7 @@ import { initials } from '../../utils';
 import toast from 'react-hot-toast';
 import ThemeToggle from '../ThemeToggle';
 import {
-  LayoutDashboard, FolderOpen, Search, Users, LogOut, Settings
+  LayoutDashboard, FolderOpen, Search, Users, LogOut, Settings, Bot
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
 const ADMIN_ITEMS = [
   { label: 'Users', icon: Users, to: '/users' },
   { label: 'Settings', icon: Settings, to: '/settings' },
+  { label: 'AI Agent Configuration', icon: Bot, to: '/settings/ai-agents' },
 ];
 
 export default function Sidebar({ onNavigate }) {
@@ -88,6 +89,7 @@ export default function Sidebar({ onNavigate }) {
                 key={to}
                 onClick={onNavigate}
                 to={to}
+                end
                 className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
               >
                 <Icon className="nav-icon" size={17} />

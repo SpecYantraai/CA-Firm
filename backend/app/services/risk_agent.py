@@ -22,9 +22,13 @@ def storage_root():
     return root
 
 
-def call_agent(operation, data=None, knowledge_base_path=None):
+def call_agent(operation, data=None, knowledge_base_path=None, model_configuration=None):
+    if operation in {"configuration", "run", "test_connection"} and model_configuration is None:
+        from app.services.agent_model_settings import load_runtime_settings
+        model_configuration = load_runtime_settings()
     runtime_kb = storage_root() / "knowledge_base.xlsx"
     request = {"operation": operation, "data": data or {},
+               "model_configuration": model_configuration,
                "knowledge_base_path": str(knowledge_base_path or (runtime_kb if runtime_kb.exists() else VENDOR / "data" / "knowledge_base.xlsx"))}
     try:
         result = subprocess.run(

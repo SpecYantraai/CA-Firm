@@ -84,6 +84,16 @@
 .ra-edit-list-row > .btn { flex-shrink: 0; }
 .ra-admin { max-width: 960px; border-top: 1px solid var(--border); padding-top: 24px; display: flex; flex-direction: column; gap: 18px; }
 .ra-admin h2 { font-size: 17px; font-weight: 600; }
+.agent-config-page { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.agent-model-section { max-width: 960px; display: flex; flex-direction: column; gap: 24px; }
+.agent-model-section h2 { font-size: 17px; font-weight: 600; }
+.agent-enable, .agent-key-status label { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.agent-enable input, .agent-key-status input { accent-color: var(--purple); width: 16px; height: 16px; flex-shrink: 0; }
+.agent-key-input { position: relative; }
+.agent-key-input > .input { padding-right: 46px; }
+.agent-key-input > .btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.agent-key-status { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.agent-timeout { max-width: 240px; }
 .ra-admin-connection { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
 .ra-admin-connection span { color: var(--text-secondary); display: block; font-size: 11px; }
 .ra-admin-connection strong { display: block; font-size: 13px; font-weight: 500; margin-top: 3px; overflow-wrap: anywhere; }

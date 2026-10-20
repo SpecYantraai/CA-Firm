@@ -11,7 +11,7 @@ echo ============================================================
 echo.
 
 echo [1/3] Checking dependencies...
-python -m pip install -r requirements.txt
+python -m pip install --only-binary=:all: -r requirements.txt
 if errorlevel 1 (
     echo Dependency installation failed. The backend has not been started.
     pause

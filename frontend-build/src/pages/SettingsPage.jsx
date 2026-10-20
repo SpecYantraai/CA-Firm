@@ -5,7 +5,6 @@ import { useAuthStore } from '../store';
 import { getErrorMessage } from '../utils';
 import { Check, ExternalLink, Save, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
-import RiskAgentSettings from '../components/agents/RiskAgentSettings';
 
 export default function SettingsPage() {
   const user = useAuthStore(s => s.user);
@@ -154,7 +153,6 @@ export default function SettingsPage() {
             </form>
           )}
         </div>
-        <RiskAgentSettings />
       </div>
     </div>
   );

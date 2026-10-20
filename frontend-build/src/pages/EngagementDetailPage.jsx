@@ -294,7 +294,7 @@ export default function EngagementDetailPage() {
           {['files', 'agent', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`}
               onClick={() => setActiveTab(tab)}>
-              {tab === 'files' ? 'File Explorer' : tab === 'agent' ? 'Risk Assessment' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
+              {tab === 'files' ? 'File Explorer' : tab === 'agent' ? 'Risk Assessment Agent' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
             </button>
           ))}
         </div>

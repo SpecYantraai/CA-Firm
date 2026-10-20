@@ -2,7 +2,7 @@
 
 Client-wise audit documentation and **Agentic Risk Assessment**, with a native
 React interface and CA-controlled approval. Select a client engagement and open
-the **Risk Assessment** tab. Both the firm team and assigned client logins can
+the **Risk Assessment Agent** tab. Both the firm team and assigned client logins can
 work on the engagement's saved assessment.
 
 ## Agentic Risk Assessment
@@ -40,8 +40,9 @@ flowchart LR
   one user's save from silently overwriting another user's changes.
 - Managers, partners and administrators can approve. EQCR reviewers have read-only
   access to agent inputs. Engagement and section locks also apply.
-- Admin **Settings > Risk Assessment Agent** shows the provider, model, connection
-  status and knowledge-base details, and accepts replacement KB workbooks.
+- Admin **AI Agent Configuration** manages the provider, model, API base URL,
+  encrypted API key, timeout and knowledge base. Saved settings apply to new agent
+  runs immediately; OpenAI-compatible self-hosted endpoints are also supported.
 - The supplied workbook contains **2,377 knowledge-base rows**. Runtime KB uploads
   are stored separately from that original workbook.
 - The original **19 runtime files, prompts and workbook remain unchanged**.
@@ -81,7 +82,7 @@ for configuration, original parser behavior, persistence and verification.
 
 ## Run Locally
 
-Use **Python 3.12** for the pinned backend dependencies, **Node.js 20.19+ or
+Use **Python 3.12 or 3.14** for the pinned backend dependencies, **Node.js 20.19+ or
 22.12+**, and **MySQL 8**. The commands below use Windows PowerShell.
 
 ### 1. Get the Code and Prepare MySQL
@@ -103,8 +104,9 @@ python -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Edit `backend/.env` with your database credentials, application secret and agent
-configuration:
+Edit `backend/.env` with your database credentials and application secret. The LLM
+values below are an optional server fallback; admins can instead enter the model,
+API key and endpoint in **Administration > AI Agent Configuration** after login:
 
 ```dotenv
 DATABASE_URL=mysql+pymysql://specentra:YOUR_URL_ENCODED_PASSWORD@localhost:3306/specentra
@@ -123,13 +125,19 @@ configured external provider for supplementary risk generation. Credentials are
 server-side and are not included in Git or returned to the browser.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 `requirements.txt` includes `requirements-agent.txt`. Install with the **same
 Python interpreter that runs the backend**. Tables, including agent draft
 storage, are created by normal backend startup.
+
+If Python 3.14 tries to compile `pydantic-core` and reports `link.exe` missing,
+make sure you are using this updated requirements file rather than the old
+Pydantic 2.9.2 pin. Installation uses prebuilt wheels; Rust and Visual Studio
+Build Tools are not required for the supported Windows x64 setup. Use
+`python -m pip` rather than `pip.exe` when installing dependencies.
 
 ### 3. Start the Frontend
 
@@ -150,7 +158,7 @@ API documentation: [http://localhost:8000/api/docs](http://localhost:8000/api/do
 
 ### 4. Open the Agent
 
-Sign in, select an engagement, then open **Risk Assessment**. In Admin Settings,
+Sign in, select an engagement, then open **Risk Assessment Agent**. In AI Agent Configuration,
 check that the knowledge base is loaded and the provider key is configured.
 Complete the seven-step workflow and have a firm manager, partner or administrator
 approve the gate review.
@@ -191,7 +199,7 @@ npm.cmd run build
 
 # From backend, using the backend virtual environment
 .\.venv\Scripts\python.exe -m pip install httpx
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_risk_agent.py -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 The backend suite checks source integrity, calculation/parser parity, engagement

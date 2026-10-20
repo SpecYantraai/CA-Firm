@@ -11,12 +11,15 @@ import EngagementDetailPage from './pages/EngagementDetailPage';
 import SearchPage from './pages/SearchPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
+import AgentConfigurationPage from './pages/AgentConfigurationPage';
 import './index.css';
 import './theme.css';
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute({ children, adminOnly = false }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const user = useAuthStore(s => s.user);
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (adminOnly && user?.role !== 'Admin') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -57,6 +60,7 @@ export default function App() {
         <Route path="/search" element={<ProtectedRoute><AppLayout><SearchPage /></AppLayout></ProtectedRoute>}/>
         <Route path="/users" element={<ProtectedRoute><AppLayout><UsersPage /></AppLayout></ProtectedRoute>}/>
         <Route path="/settings" element={<ProtectedRoute><AppLayout><SettingsPage /></AppLayout></ProtectedRoute>}/>
+        <Route path="/settings/ai-agents" element={<ProtectedRoute adminOnly><AppLayout><AgentConfigurationPage /></AppLayout></ProtectedRoute>}/>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
