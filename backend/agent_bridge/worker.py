@@ -48,10 +48,13 @@ def build_llm_client(config):
 def dispatch(request):
     from dotenv import dotenv_values, load_dotenv
     load_dotenv(BACKEND / ".env")
+    load_dotenv(BACKEND / ".private-agent-import" / "default-model.env")
     private_config = BACKEND / ".private-agent-import" / ".env"
     for key, value in dotenv_values(private_config).items():
         if key in {"LLM_PROVIDER", "LLM_MODEL", "LLM_TIMEOUT_SECONDS", "LLM_MAX_RETRIES", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LOG_LEVEL"} and key not in os.environ and value:
             os.environ[key] = value
+    if os.environ.get("LLM_PROVIDER", "nvidia").lower() == "nvidia":
+        os.environ.setdefault("LLM_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
     model_config = request.get("model_configuration")
     apply_model_configuration(model_config)
     from utils import knowledge_base as kb
@@ -72,7 +75,7 @@ def dispatch(request):
     if operation == "configuration":
         provider = os.environ.get("LLM_PROVIDER", "nvidia").lower()
         key_name = {"nvidia": "NVIDIA_API_KEY", "openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider)
-        defaults = {"nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b", "anthropic": "claude-sonnet-4-6", "openai": "gpt-4o"}
+        defaults = {"nvidia": "nvidia/nemotron-3-ultra-550b-a55b", "anthropic": "claude-sonnet-4-6", "openai": "gpt-4o"}
         return {"knowledge_base": kb.get_kb_stats(), "provider": provider,
                 "model": os.environ.get("LLM_MODEL", defaults.get(provider, "")),
                 "base_url": model_config["base_url"] if model_config else {"nvidia": "https://integrate.api.nvidia.com/v1", "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"), "anthropic": os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")}.get(provider, ""),

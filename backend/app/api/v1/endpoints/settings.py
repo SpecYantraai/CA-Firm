@@ -38,6 +38,13 @@ def list_editor_providers(current_user: User = Depends(require_roles("Admin"))):
     return {
         "data": [
             {
+                "value": "builtin",
+                "label": "Built-in DOCX and Excel Editor",
+                "license": "Free open-source components",
+                "status": "ready",
+                "description": "Built-in DOCX and XLSX editing. No external document server required.",
+            },
+            {
                 "value": "onlyoffice-community",
                 "label": "ONLYOFFICE Docs Community",
                 "license": "Free self-hosted",

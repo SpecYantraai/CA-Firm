@@ -402,7 +402,7 @@ class ErrorResponse(BaseModel):
 
 # App settings
 class EditorSettingsOut(BaseModel):
-    provider: str = "onlyoffice-community"
+    provider: str = "builtin"
     onlyoffice_url: Optional[str] = None
     collabora_url: Optional[str] = None
     microsoft365_enabled: bool = False

@@ -148,6 +148,7 @@ export default function EngagementDetailPage() {
   const [tree, setTree] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedWP, setSelectedWP] = useState(null);
+  const [documentDirty, setDocumentDirty] = useState(false);
   const [activeTab, setActiveTab] = useState('files');
   const [showClosure, setShowClosure] = useState(false);
   const [showRollForward, setShowRollForward] = useState(false);
@@ -282,7 +283,7 @@ export default function EngagementDetailPage() {
               <RotateCcw size={14}/> Roll Forward
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/engagements')}>
+          <button className="btn btn-ghost btn-sm" onClick={() => { if (!documentDirty || window.confirm('Discard unsaved document changes?')) navigate('/engagements'); }}>
             ← Back
           </button>
         </div>
@@ -293,7 +294,7 @@ export default function EngagementDetailPage() {
         <div className="tabs" style={{ borderBottom:'none' }}>
           {['files', 'agent', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
             <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab)}>
+              onClick={() => { if (tab === activeTab || !documentDirty || window.confirm('Discard unsaved document changes?')) setActiveTab(tab); }}>
               {tab === 'files' ? 'File Explorer' : tab === 'agent' ? 'Risk Assessment Agent' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
             </button>
           ))}
@@ -337,7 +338,7 @@ export default function EngagementDetailPage() {
                       code={code}
                       section={section}
                       engagementId={id}
-                      onSelectWP={setSelectedWP}
+                      onSelectWP={next => { if (next.wp_id !== selectedWP?.wp_id && (!documentDirty || window.confirm('Discard unsaved document changes?'))) setSelectedWP(next); }}
                       onRefresh={load}
                       archived={locked}
                       canCreateFolder={canCreateFolder}
@@ -357,6 +358,7 @@ export default function EngagementDetailPage() {
             {selectedWP && (
               <WPDetailPanel
                 wp={selectedWP}
+                onDocumentDirtyChange={setDocumentDirty}
                 engagementId={id}
                 archived={locked}
                 onClose={() => setSelectedWP(null)}

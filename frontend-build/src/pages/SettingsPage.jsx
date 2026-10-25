@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const user = useAuthStore(s => s.user);
   const [providers, setProviders] = useState([]);
   const [form, setForm] = useState({
-    provider: 'none',
+    provider: 'builtin',
     onlyoffice_url: '',
     collabora_url: '',
     microsoft365_enabled: false,
@@ -139,9 +139,9 @@ export default function SettingsPage() {
                 {selected && (
                   <div className="editor-summary">
                     <strong>Selected provider:</strong> {selected.label}
-                    <a href={providerDocsUrl(form.provider)} target="_blank" rel="noreferrer">
+                    {form.provider !== 'builtin' && <a href={providerDocsUrl(form.provider)} target="_blank" rel="noreferrer">
                       Setup docs <ExternalLink size={12}/>
-                    </a>
+                    </a>}
                   </div>
                 )}
               </div>

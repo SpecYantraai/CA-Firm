@@ -6,6 +6,7 @@ from app.models.models import AppSetting
 EDITOR_SETTING_KEY = "editor_settings"
 
 EDITOR_PROVIDERS = {
+    "builtin": "Built-in DOCX and Excel Editor",
     "onlyoffice-community": "ONLYOFFICE Docs Community",
     "onlyoffice-enterprise": "ONLYOFFICE Docs Enterprise",
     "collabora-code": "Collabora Online CODE",
@@ -16,7 +17,7 @@ EDITOR_PROVIDERS = {
 
 def default_editor_settings() -> dict:
     return {
-        "provider": "onlyoffice-community" if settings.DOCUMENT_EDITOR_URL else "none",
+        "provider": "onlyoffice-community" if settings.DOCUMENT_EDITOR_URL else "builtin",
         "onlyoffice_url": settings.DOCUMENT_EDITOR_URL or "",
         "collabora_url": "",
         "microsoft365_enabled": False,

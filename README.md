@@ -64,9 +64,29 @@ for configuration, original parser behavior, persistence and verification.
 - Final audit file assembly, ZIP archives, engagement locking and change history.
 - Client request lists with ownership, due dates, comments and document uploads.
 - Typed e-signature requests and approval records.
-- Admin controls for ONLYOFFICE and Collabora document editing providers.
+- Built-in DOCX rich-text and XLSX spreadsheet editing, with versioned saves.
+- Admin controls for built-in, ONLYOFFICE and Collabora document editing providers.
 - Purple/lavender and navy visual theme, persistent light/dark mode and mobile
   navigation.
+
+## Built-in Document Editing
+
+Open an uploaded `.docx` or `.xlsx` working paper and select **Preview/Edit**.
+The built-in editor is the default on new installations and needs no separate
+Office server. Existing installations can select **Built-in DOCX and Excel Editor**
+under **Admin Settings > Document Editor**. An explicitly saved external editor
+or disabled setting is respected.
+
+Word supports text, headings, bold/italic/underline, lists and simple tables.
+Excel supports multiple sheets, cell edits, formula previews, paste, undo/redo,
+and navigation beyond the first screen. **Save version** preserves the previous
+file and records an edit event. Engagement access, review locks, and optimistic
+version checks are enforced by the backend.
+
+Advanced embedded Word content and complex tables are preserved as protected
+blocks. Legacy `.doc`/`.xls` files and full Office layout fidelity still require
+an external editor. See [Native Office Editor](docs/NATIVE_OFFICE_EDITOR.md) for
+limits, preservation behavior, and test coverage.
 
 ## Technology
 
@@ -116,7 +136,7 @@ ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
 LLM_PROVIDER=nvidia
 NVIDIA_API_KEY=your-provider-key
-LLM_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+LLM_MODEL=nvidia/nemotron-3-ultra-550b-a55b
 ```
 
 Use `LLM_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=openai`

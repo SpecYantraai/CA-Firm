@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { wpApi } from '../../api';
 import { useAuthStore } from '../../store';
 import { formatDate, formatDateTime, formatBytes, getErrorMessage, downloadBlob } from '../../utils';
@@ -10,12 +10,14 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const NativeOfficeEditor = lazy(() => import('./NativeOfficeEditor'));
+
 const STATUS_COLOR = {
   'Draft': 'var(--text-muted)', 'Submitted': 'var(--blue)',
   'Under Review': 'var(--amber)', 'Review Notes Raised': 'var(--red)', 'Finalised': 'var(--green)'
 };
 
-export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefresh }) {
+export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefresh, onDocumentDirtyChange }) {
   const user = useAuthStore(s => s.user);
   const [wp, setWP] = useState(initialWP);
   const [tab, setTab] = useState('preview');
@@ -29,6 +31,8 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
   const [previewError, setPreviewError] = useState('');
   const [editorInfo, setEditorInfo] = useState(null);
   const [viewerLoading, setViewerLoading] = useState(false);
+  const [documentDirty, setDocumentDirty] = useState(false);
+  useEffect(() => { onDocumentDirtyChange?.(documentDirty); return () => onDocumentDirtyChange?.(false); }, [documentDirty, onDocumentDirtyChange]);
   const [metaForm, setMetaForm] = useState({
     wp_number: initialWP.wp_number || '',
     filename: initialWP.filename || '',
@@ -86,6 +90,10 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
     try {
       const editorRes = await wpApi.editorConfig(wp.wp_id);
       setEditorInfo(editorRes.data);
+      if (editorRes.data.enabled && editorRes.data.provider === 'builtin') {
+        setViewerLoading(false);
+        return;
+      }
     } catch {
       setEditorInfo(null);
     }
@@ -280,7 +288,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
           <button className="btn btn-outline btn-sm" onClick={handleDownload} title="Download">
             <Download size={13}/> Download
           </button>
-          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Close working paper" title="Close working paper"><X size={16}/></button>
+          <button className="btn btn-icon btn-ghost" onClick={() => { if (!documentDirty || window.confirm('Discard unsaved document changes?')) onClose(); }} aria-label="Close working paper" title="Close working paper"><X size={16}/></button>
         </div>
       </div>
 
@@ -332,7 +340,7 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
         <div className="tabs" style={{ borderBottom:'none' }}>
           {tabs.map(t => (
             <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}>
+              onClick={() => { if (t.id === tab || !documentDirty || window.confirm('Discard unsaved document changes?')) setTab(t.id); }}>
               {t.label}
             </button>
           ))}
@@ -350,6 +358,8 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
             previewError={previewError}
             editorInfo={editorInfo}
             onDownload={handleDownload}
+            onSaved={updated => { setWP(updated); onRefresh(); }}
+            onDirtyChange={setDocumentDirty}
           />
         )}
 
@@ -550,11 +560,11 @@ export default function WPDetailPanel({ wp: initialWP, archived, onClose, onRefr
   );
 }
 
-function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, editorInfo, onDownload }) {
+function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, editorInfo, onDownload, onSaved, onDirtyChange }) {
   const ext = (wp.file_format || '').toLowerCase();
   const canNativePreview = ['pdf', 'jpg', 'jpeg', 'png'].includes(ext);
   const isImage = ['jpg', 'jpeg', 'png'].includes(ext);
-  const editorEnabled = editorInfo?.enabled && !archived;
+  const editorEnabled = editorInfo?.enabled && (!archived || editorInfo?.provider === 'builtin');
   const editorMessage = editorInfo?.message || 'Browser editing is not configured for this file type.';
 
   return (
@@ -583,7 +593,11 @@ function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, ed
         <iframe className="doc-editor-frame" src={editorInfo.launchUrl} title={`${wp.filename} editor`} />
       )}
 
-      {!loading && editorEnabled && editorInfo?.provider !== 'collabora-code' && (
+      {!loading && editorEnabled && editorInfo?.provider === 'builtin' && (
+        <Suspense fallback={<div className="document-empty">Opening editor...</div>}><NativeOfficeEditor wp={wp} onSaved={onSaved} onDirtyChange={onDirtyChange}/></Suspense>
+      )}
+
+      {!loading && editorEnabled && editorInfo?.provider?.startsWith('onlyoffice') && (
         <OnlyOfficeEditor editorInfo={editorInfo} wp={wp} />
       )}
 
@@ -600,11 +614,11 @@ function DocumentWorkspace({ wp, archived, loading, previewUrl, previewError, ed
       {!loading && !editorEnabled && (!canNativePreview || !previewUrl) && (
         <div className="document-empty">
           <PencilLine size={24}/>
-          <div className="empty-state-title">Editing needs document server setup</div>
+          <div className="empty-state-title">Document editor unavailable</div>
           <div className="empty-state-sub">
             {previewError && canNativePreview
               ? previewError
-              : `${editorMessage} Review notes can still be recorded in the Notes tab; Office preview/edit/comments require DOCUMENT_EDITOR_URL.`}
+              : editorMessage}
           </div>
           <button className="btn btn-navy btn-sm" onClick={onDownload}>
             <Download size={13}/> Download File

@@ -129,7 +129,7 @@ def user_can_edit_wp(db: Session, wp: WorkingPaper, user: User | None) -> bool:
     if not user:
         return False
     eng = db.query(Engagement).filter(Engagement.engagement_id == wp.engagement_id).first()
-    if eng and eng.status == "Archived":
+    if not eng or eng.status in ("Archived", "Finalised") or wp.review_status == "Finalised":
         return False
     if not can_prepare(get_user_engagement_role(db, wp.engagement_id, user)):
         return False
@@ -334,6 +334,14 @@ def get_editor_config(
     db: Session = Depends(get_db)
 ):
     wp = get_wp_or_404(wp_id, db)
+    from app.core.deps import can_access_engagement
+    engagement = db.get(Engagement, wp.engagement_id)
+    if not engagement or not can_access_engagement(engagement, current_user, db):
+        raise HTTPException(status_code=403, detail={"error": "You do not have access to this engagement."})
+    editor_settings = get_editor_settings(db)
+    ext = (wp.file_format or pathlib.Path(wp.filename).suffix.lstrip(".")).lower()
+    if editor_settings.get("provider") == "builtin" and ext in {"docx", "xlsx"}:
+        return {"enabled": True, "provider": "builtin", "editable": user_can_edit_wp(db, wp, current_user)}
     if not user_can_edit_wp(db, wp, current_user):
         return {
             "enabled": False,

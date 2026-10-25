@@ -9,7 +9,7 @@ from app.models.models import AppSetting
 
 SETTING_KEY = "ai_agent_model_settings"
 PROVIDERS = {
-    "nvidia": {"model": "nvidia/nemotron-3.5-lightning-30b-a3b", "base_url": "https://integrate.api.nvidia.com/v1"},
+    "nvidia": {"model": "nvidia/nemotron-3-ultra-550b-a55b", "base_url": "https://integrate.api.nvidia.com/v1"},
     "openai": {"model": "gpt-4o", "base_url": "https://api.openai.com/v1"},
     "anthropic": {"model": "claude-sonnet-4-6", "base_url": "https://api.anthropic.com"},
     "openai-compatible": {"model": "", "base_url": ""},
