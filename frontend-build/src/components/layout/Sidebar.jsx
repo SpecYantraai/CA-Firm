@@ -1,10 +1,11 @@
+import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuthStore, useAppStore } from '../../store';
-import { initials } from '../../utils';
-import toast from 'react-hot-toast';
-import ThemeToggle from '../ThemeToggle';
+import { useAuthStore, useAppStore, useUIStore } from '../../store';
+import UserMenu from './UserMenu';
+import { ScrollArea } from '../common/Resizable';
 import {
-  LayoutDashboard, FolderOpen, Search, Users, LogOut, Settings, Bot
+  LayoutDashboard, FolderOpen, Search, Users, Settings, Bot,
+  PanelLeftClose, PanelLeftOpen, ChevronsUpDown, Layers, Check, Building2,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -16,105 +17,104 @@ const NAV_ITEMS = [
 const ADMIN_ITEMS = [
   { label: 'Users', icon: Users, to: '/users' },
   { label: 'Settings', icon: Settings, to: '/settings' },
-  { label: 'AI Agent Configuration', icon: Bot, to: '/settings/ai-agents' },
+  { label: 'AI Agents', icon: Bot, to: '/settings/ai-agents' },
 ];
 
 export default function Sidebar({ onNavigate }) {
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
   const currentEngagement = useAppStore((s) => s.currentEngagement);
+  const collapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const navigate = useNavigate();
+  const [firmMenu, setFirmMenu] = useState(false);
+  const headRef = useRef(null);
 
-  const handleLogout = () => {
-    logout();
-    toast.success('Signed out');
-    navigate('/login');
-  };
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (headRef.current && !headRef.current.contains(e.target)) setFirmMenu(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
-  const canManageUsers = ['Admin'].includes(user?.role);
+  const canManageUsers = user?.role === 'Admin';
+  const navClass = ({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${collapsed ? 'tip tip-right' : ''}`;
 
   return (
-    <aside className="sidebar" id="app-navigation" aria-label="Main navigation">
-      {/* Logo — replace img src with your company logo path */}
-      <div className="sidebar-logo">
-        <div className="logo-fallback">
-          <div className="logo-mark">S</div>
-          <div>
-            {/* 
-              ────────────────────────────────────────────────
-              COMPANY LOGO PATH:
-              Place your logo file at:
-                frontend/public/logo.png  (or .svg / .webp)
-              Then replace the logo-mark div above with:
-                <img src="/logo.png" alt="Company Logo" style={{height:36}} />
-              And replace the logo-name below with your firm name.
-              ────────────────────────────────────────────────
-            */}
-            <div className="logo-name specentra-wordmark"><b>Spec</b>entra</div>
-            <div className="logo-sub">Audit Management System</div>
+    <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''}`} id="app-navigation" aria-label="Main navigation">
+      {/* Firm / workspace switcher */}
+      <div className="sidebar-head" ref={headRef} style={{ position: 'relative' }}>
+        <button
+          className={`firm-switch ${collapsed ? 'tip tip-right' : ''}`}
+          data-tip={collapsed ? 'Specentra' : undefined}
+          onClick={() => setFirmMenu((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={firmMenu}
+        >
+          <div className="firm-mark">S</div>
+          <div className="firm-meta">
+            <span className="firm-name"><b>Spec</b>entra</span>
+            <span className="firm-sub">Audit Management</span>
           </div>
-        </div>
+          <ChevronsUpDown size={14} className="firm-chevron" />
+        </button>
+        {firmMenu && (
+          <div className="menu" style={{ position: 'absolute', top: 'calc(100% - 4px)', left: 10, right: 10 }}>
+            <div className="menu-label">Workspace</div>
+            <button className="menu-item"><Building2 size={15} /> Specentra <Check size={15} style={{ marginLeft: 'auto', color: 'var(--brand)' }} /></button>
+            {canManageUsers && (
+              <>
+                <div className="menu-sep" />
+                <button className="menu-item" onClick={() => { navigate('/settings'); setFirmMenu(false); onNavigate?.(); }}><Settings size={15} /> Firm settings</button>
+              </>
+            )}
+            <div className="menu-label" style={{ textTransform: 'none', fontWeight: 400, color: 'var(--text-muted)' }}>On-premise single-firm install</div>
+          </div>
+        )}
       </div>
 
-      {/* Active engagement indicator */}
+      {/* Active engagement context */}
       {currentEngagement && (
-        <div className="sidebar-engagement">
-          <div className="eng-label">Active Engagement</div>
+        <button
+          className={`sidebar-engagement ${collapsed ? 'tip tip-right' : ''}`}
+          data-tip={collapsed ? currentEngagement.client_name : undefined}
+          onClick={() => { navigate(`/engagements/${currentEngagement.engagement_id}`); onNavigate?.(); }}
+        >
+          <div className="eng-label"><Layers size={11} /> Active engagement</div>
           <div className="eng-name">{currentEngagement.client_name}</div>
           <div className="eng-fy">FY {currentEngagement.financial_year}</div>
-        </div>
+        </button>
       )}
 
-      {/* Nav */}
-      <nav className="sidebar-nav">
-        <div className="nav-section-label">Navigation</div>
+      {/* Navigation */}
+      <ScrollArea as="nav" className="sidebar-nav">
+        {!collapsed && <div className="nav-section-label">Workspace</div>}
         {NAV_ITEMS.map(({ label, icon: Icon, to }) => (
-          <NavLink
-            key={to}
-            onClick={onNavigate}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          >
-            <Icon className="nav-icon" size={17} />
-            {label}
+          <NavLink key={to} onClick={onNavigate} to={to} end={to === '/'} className={navClass} data-tip={collapsed ? label : undefined}>
+            <Icon className="nav-icon" size={18} />
+            <span className="nav-label">{label}</span>
           </NavLink>
         ))}
 
         {canManageUsers && (
           <>
-            <div className="nav-section-label" style={{ marginTop: 8 }}>Administration</div>
+            {!collapsed && <div className="nav-section-label">Administration</div>}
             {ADMIN_ITEMS.map(({ label, icon: Icon, to }) => (
-              <NavLink
-                key={to}
-                onClick={onNavigate}
-                to={to}
-                end
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              >
-                <Icon className="nav-icon" size={17} />
-                {label}
+              <NavLink key={to} onClick={onNavigate} to={to} end={to !== '/settings'} className={navClass} data-tip={collapsed ? label : undefined}>
+                <Icon className="nav-icon" size={18} />
+                <span className="nav-label">{label}</span>
               </NavLink>
             ))}
           </>
         )}
+      </ScrollArea>
 
-        <div className="nav-section-label" style={{ marginTop: 8 }}>Compliance</div>
-        <div className="sidebar-compliance">
-          Audit documentation &amp; review
-        </div>
-      </nav>
-
-      {/* User footer */}
-      <div className="sidebar-bottom">
-        <ThemeToggle />
-        <button type="button" className="sidebar-user" onClick={handleLogout} title="Sign out" aria-label={`Sign out ${user?.full_name || ''}`}>
-          <div className="user-avatar">{user?.initials || initials(user?.full_name)}</div>
-          <div className="user-info">
-            <div className="user-name">{user?.full_name}</div>
-            <div className="user-role">{user?.role}</div>
-          </div>
-          <LogOut size={16} className="sidebar-logout" />
+      {/* Footer: user menu, collapse */}
+      <div className="sidebar-foot">
+        <UserMenu collapsed={collapsed} onNavigate={onNavigate} />
+        <button className="collapse-btn" onClick={toggleSidebar} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand' : 'Collapse'}>
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          <span>Collapse</span>
         </button>
       </div>
     </aside>

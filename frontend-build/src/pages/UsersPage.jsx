@@ -206,7 +206,7 @@ export default function UsersPage() {
 
   if (user?.role !== 'Admin') {
     return (
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', flexDirection:'column', gap:12 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', flexDirection:'column', gap:12 }}>
         <div style={{ fontSize:15, fontWeight:600, color:'var(--text-secondary)' }}>Access Denied</div>
         <div style={{ fontSize:13, color:'var(--text-muted)' }}>Only Admins can manage users</div>
       </div>
@@ -251,7 +251,7 @@ export default function UsersPage() {
   const inactive = users.filter(u => !u.is_active);
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
       {showCreate && (
         <CreateUserModal onClose={() => setShowCreate(false)} onCreated={() => { load(); }}/>
       )}

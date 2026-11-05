@@ -106,6 +106,10 @@ export default function RiskAssessmentPanel({ engagement, archived, onPublished 
           {state && !readOnly && stage !== 'running' && <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => { if (confirm('Start a new assessment? Approved working papers and previous uploads will be retained.')) save('reset'); }}><Plus size={14}/>New assessment</button>}
         </div>
       </header>
+      <div className="ai-surface ra-provenance">
+        <span className="badge badge-ai"><Bot size={12}/> AI-assisted</span>
+        <span>Every figure and risk this agent produces is a <strong>draft for professional review</strong>. Nothing is recorded on the file until a Partner or Audit Manager approves it at Gate Review.</span>
+      </div>
       {error && <div className="ra-alert ra-alert-error" role="alert"><CircleAlert size={17}/><span>{error}</span><button className="btn btn-ghost btn-xs" onClick={reload}>Reload</button></div>}
       {configuration?.available === false && <div className="ra-alert ra-alert-error" role="alert"><CircleAlert size={17}/><span>Agent unavailable: {configuration.error}</span></div>}
       {configuration?.available && (!kb?.loaded || !configuration.key_configured) && <div className="ra-alert"><CircleAlert size={17}/><span>{!kb?.loaded ? 'The firm knowledge base is not loaded.' : 'The LLM connection is not configured.'} Contact your firm administrator before running the risk engine.</span></div>}

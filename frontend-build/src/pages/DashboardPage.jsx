@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { engApi } from '../api';
 import { useAuthStore, useAppStore } from '../store';
-import { formatDate, statusBadgeClass, engagementTypeName } from '../utils';
+import { statusBadgeClass, engagementTypeName } from '../utils';
 import {
-  FolderOpen, CheckCircle, Plus, Building2, CalendarDays,
-  MessageSquare, FileText, ShieldCheck, Clock3
+  FolderOpen, CheckCircle2, Plus, Building2, ArrowRight,
+  ShieldCheck, Sparkles, Inbox,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -17,174 +17,171 @@ export default function DashboardPage() {
 
   useEffect(() => {
     engApi.list()
-      .then(r => setEngagements(r.data))
+      .then(r => setEngagements(r.data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const active = engagements.filter(e => e.status === 'Active');
-  const archived = engagements.filter(e => e.status === 'Archived');
-  const recent = [...engagements].slice(0, 8);
+  const canCreate = ['Audit Manager', 'Partner', 'Admin'].includes(user?.role);
+  const count = (status) => engagements.filter(e => e.status === status).length;
+  const total = engagements.length;
+
+  const phases = [
+    { key: 'Active', label: 'Active', color: 'var(--green)' },
+    { key: 'Under Review', label: 'Under review', color: 'var(--amber)' },
+    { key: 'Finalised', label: 'Finalised', color: 'var(--blue)' },
+    { key: 'Archived', label: 'Archived', color: 'var(--text-muted)' },
+  ];
+
+  const recent = useMemo(
+    () => [...engagements].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6),
+    [engagements]
+  );
 
   const openEngagement = (eng) => {
     setCurrentEngagement(eng);
     navigate(`/engagements/${eng.engagement_id}`);
   };
 
-  const progressFor = (eng, offset = 0) => {
-    if (eng.status === 'Archived' || eng.status === 'Finalised') return 100;
-    if (eng.status === 'Under Review') return Math.min(95, 62 + offset);
-    return Math.min(88, Math.max(12, 34 + offset));
-  };
+  const firstName = (user?.full_name || '').split(' ')[0] || 'there';
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
-      <div className="page-header auditfile-topbar">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div className="page-header">
         <div className="page-header-left">
-          <h1 className="page-title">My Dashboard</h1>
-          <p className="page-subtitle">Welcome back, {user?.full_name} | {user?.role}</p>
+          <h1 className="page-title">Welcome back, {firstName}</h1>
+          <p className="page-subtitle">{user?.role} · Here is where your attention is needed today.</p>
         </div>
         <div className="page-actions">
-          {['Audit Manager','Partner','Admin'].includes(user?.role) && (
+          {canCreate && (
             <button className="btn btn-primary" onClick={() => navigate('/engagements?create=1')}>
-              <Plus size={15}/> New Engagement
+              <Plus size={15} /> New engagement
             </button>
           )}
         </div>
       </div>
 
-      <div className="page-body auditfile-body">
-        <div className="auditfile-metric-strip">
-          <div className="af-metric">
-            <span>Total engagements</span>
-            <strong>{engagements.length}</strong>
-          </div>
-          <div className="af-metric">
-            <span>Active files</span>
-            <strong>{active.length}</strong>
-          </div>
-          <div className="af-metric">
-            <span>Archived</span>
-            <strong>{archived.length}</strong>
-          </div>
-          <div className="af-metric">
-            <span>Signed in as</span>
-            <strong>{user?.role}</strong>
-          </div>
+      <div className="page-body">
+        <div className="stats-grid">
+          <StatCard label="Total engagements" value={total} loading={loading} />
+          <StatCard label="Active" value={count('Active')} loading={loading} tone="green" />
+          <StatCard label="Under review" value={count('Under Review')} loading={loading} tone="amber" />
+          <StatCard label="Archived" value={count('Archived')} loading={loading} tone="muted" />
         </div>
 
-        <div className="auditfile-dashboard-grid">
-          <section className="af-panel af-client-status">
-            <div className="af-panel-header">
-              <span><Building2 size={14}/> Client Status</span>
-              <button className="btn btn-ghost btn-xs" onClick={() => navigate('/engagements')}>View all</button>
-            </div>
-            {loading ? (
-              <div className="af-empty-line">Loading engagements...</div>
-            ) : recent.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon"><FolderOpen size={24}/></div>
-                <div className="empty-state-title">No engagements yet</div>
-                <div className="empty-state-sub">Create your first audit engagement to get started</div>
+        <div className="dash-grid">
+          <div className="dash-stack">
+            <section className="card">
+              <div className="card-header">
+                <div className="card-title">Engagements by phase</div>
+                <button className="btn btn-ghost btn-xs" onClick={() => navigate('/engagements')}>View all <ArrowRight size={12} /></button>
               </div>
-            ) : (
-              <div className="af-client-list">
-                {recent.map((eng, idx) => {
-                  const prepared = progressFor(eng, idx * 3);
-                  const reviewed = Math.max(0, prepared - 18);
-                  return (
-                    <button key={eng.engagement_id} className="af-client-row" onClick={() => openEngagement(eng)}>
-                      <div className="af-client-title-line">
-                        <div>
-                          <strong>{eng.client_name}</strong>
-                          <span>{engagementTypeName(eng.engagement_type)} | FY {eng.financial_year}</span>
-                        </div>
-                        <span className={statusBadgeClass(eng.status)}>{eng.status}</span>
+              {loading ? (
+                <div style={{ padding: 16 }}>
+                  {[0, 1, 2, 3].map(i => <div className="skeleton skeleton-line" key={i} style={{ margin: '12px 0' }} />)}
+                </div>
+              ) : total === 0 ? (
+                <div className="dash-note">No engagements yet — phases will populate as audit files are created.</div>
+              ) : (
+                <div className="phase-list">
+                  {phases.map(p => {
+                    const n = count(p.key);
+                    const pct = total ? Math.round((n / total) * 100) : 0;
+                    return (
+                      <div className="phase-row" key={p.key}>
+                        <span className="phase-name"><span className="phase-dot" style={{ background: p.color }} />{p.label}</span>
+                        <div className="progress"><span style={{ width: `${pct}%`, background: p.color }} /></div>
+                        <span className="phase-count">{n}</span>
                       </div>
-                      <div className="af-progress-track">
-                        <span className="af-progress-prepared" style={{ width: `${prepared}%` }} />
-                        <span className="af-progress-reviewed" style={{ width: `${reviewed}%` }} />
-                      </div>
-                      <div className="af-client-meta">
-                        <span><MessageSquare size={12}/> No open review comments</span>
-                        <span>{prepared}% Prepared | {reviewed}% Reviewed</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-          <aside className="af-side-stack">
-            <section className="af-panel">
-              <div className="af-panel-header">
-                <span><FileText size={14}/> My Workpapers</span>
+            <section className="card">
+              <div className="card-header">
+                <div className="card-title">Recent engagements</div>
               </div>
-              <div className="af-workpaper-list">
-                {recent.slice(0, 3).map((eng, idx) => (
-                  <button key={eng.engagement_id} className="af-workpaper-card" onClick={() => openEngagement(eng)}>
-                    <FileText size={14}/>
-                    <div>
-                      <strong>{idx === 0 ? 'Planning file' : idx === 1 ? 'Execution file' : 'Completion file'}</strong>
-                      <span>{eng.client_name}</span>
+              {loading ? (
+                <div style={{ padding: 16 }}>
+                  {[0, 1, 2].map(i => (
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0' }} key={i}>
+                      <div className="skeleton skeleton-circle" style={{ width: 28, height: 28 }} />
+                      <div style={{ flex: 1 }}><div className="skeleton skeleton-text" style={{ width: '50%' }} /></div>
                     </div>
-                  </button>
-                ))}
-                {recent.length === 0 && <div className="af-empty-line">No checked out workpapers.</div>}
+                  ))}
+                </div>
+              ) : recent.length === 0 ? (
+                <div className="empty-state" style={{ padding: 30 }}>
+                  <div className="empty-state-icon"><FolderOpen size={22} /></div>
+                  <div className="empty-state-title">No engagements yet</div>
+                  <div className="empty-state-sub">Create your first audit engagement to get started.</div>
+                </div>
+              ) : (
+                <div className="dash-list">
+                  {recent.map(eng => (
+                    <button className="dash-row" key={eng.engagement_id} onClick={() => openEngagement(eng)}>
+                      <span className="mini-mark"><Building2 size={15} /></span>
+                      <div className="dash-row-main">
+                        <b>{eng.client_name}</b>
+                        <span>{engagementTypeName(eng.engagement_type)} · FY {eng.financial_year}</span>
+                      </div>
+                      <span className={statusBadgeClass(eng.status)}>{eng.status}</span>
+                      <ArrowRight size={15} style={{ color: 'var(--text-muted)' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside className="dash-stack">
+            <section className="card">
+              <div className="card-header">
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><Inbox size={15} /> Awaiting your review</div>
+              </div>
+              <div className="caught-up">
+                <div className="caught-up-icon"><CheckCircle2 size={22} /></div>
+                <div className="empty-state-title" style={{ fontSize: 14 }}>You&rsquo;re all caught up</div>
+                <div className="empty-state-sub" style={{ fontSize: 12.5 }}>Gate reviews (G0&ndash;G3) awaiting your approval will appear here once the agent pipeline is active.</div>
               </div>
             </section>
 
-            <section className="af-panel">
-              <div className="af-panel-header">
-                <span><MessageSquare size={14}/> Recent Review Comments</span>
+            <section className="ai-surface">
+              <div className="ai-label"><Sparkles size={12} /> AI insights</div>
+              <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: '8px 0 6px', lineHeight: 1.5 }}>
+                Agent-generated highlights will surface here — risk flags, missing evidence and planning suggestions.
+              </p>
+              <p style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Agents prepare and recommend. You evaluate, challenge and approve.
+              </p>
+            </section>
+
+            <section className="card">
+              <div className="card-header">
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ShieldCheck size={15} /> Firm quality</div>
               </div>
-              <div className="af-comment-list">
-                <div className="af-comment">
-                  <div className="user-avatar">S</div>
-                  <div>
-                    <strong>Review queue clear</strong>
-                    <p>No unresolved comments in your dashboard view.</p>
-                  </div>
-                </div>
+              <div className="af-compliance-grid">
+                <div><CheckCircle2 size={16} /><span>Soft-delete retention</span></div>
+                <div><CheckCircle2 size={16} /><span>Permanent attribution</span></div>
+                <div><CheckCircle2 size={16} /><span>Review notes tracked</span></div>
+                <div><CheckCircle2 size={16} /><span>Version history active</span></div>
               </div>
             </section>
           </aside>
         </div>
-
-        <div className="auditfile-lower-grid">
-          <section className="af-panel">
-            <div className="af-panel-header">
-              <span><CalendarDays size={14}/> Deadlines</span>
-            </div>
-            <div className="af-deadline-list">
-              {recent.slice(0, 4).map(eng => (
-                <div className="af-deadline-row" key={eng.engagement_id}>
-                  <Clock3 size={14}/>
-                  <div>
-                    <strong>{eng.client_name}</strong>
-                    <span>{formatDate(eng.created_at)} | {eng.financial_year}</span>
-                  </div>
-                  <span className="badge badge-blue">In file</span>
-                </div>
-              ))}
-              {recent.length === 0 && <div className="af-empty-line">No deadlines yet.</div>}
-            </div>
-          </section>
-
-          <section className="af-panel">
-            <div className="af-panel-header">
-              <span><ShieldCheck size={14}/> Compliance</span>
-            </div>
-            <div className="af-compliance-grid">
-              <div><CheckCircle size={16}/><span>Soft-delete retention</span></div>
-              <div><CheckCircle size={16}/><span>Permanent attribution</span></div>
-              <div><CheckCircle size={16}/><span>Review notes tracked</span></div>
-              <div><CheckCircle size={16}/><span>Version history active</span></div>
-            </div>
-          </section>
-        </div>
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, loading, tone }) {
+  const toneColor = tone === 'green' ? 'var(--green)' : tone === 'amber' ? 'var(--amber)' : tone === 'muted' ? 'var(--text-muted)' : 'var(--brand)';
+  return (
+    <div className="stat-card" style={{ borderTop: `2px solid ${toneColor}` }}>
+      <div className="stat-label">{label}</div>
+      {loading ? <div className="skeleton skeleton-line" style={{ width: 40, height: 26, marginTop: 4 }} /> : <div className="stat-value">{value}</div>}
     </div>
   );
 }

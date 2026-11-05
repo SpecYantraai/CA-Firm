@@ -13,6 +13,7 @@ __pycache__/
 node_modules/
 dist/
 npm-debug.log
+.wrangler/
 
 # Local env files
 .env
