@@ -17,7 +17,7 @@
 .ra-loading { min-height: 220px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; color: var(--text-secondary); }
 .ra-steps { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); border-bottom: 1px solid var(--border); }
 .ra-steps > button { display: flex; align-items: center; justify-content: flex-start; gap: 7px; padding: 12px 5px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; min-height: 58px; text-align: left; }
-.ra-steps > button > span { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border: 1px solid var(--border-strong); border-radius: 50%; font-family: 'IBM Plex Mono',monospace; font-size: 10px; background: var(--bg-card); }
+.ra-steps > button > span { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border: 1px solid var(--border-strong); border-radius: 50%; font-family: var(--font-mono); font-size: 10px; background: var(--bg-card); }
 .ra-steps > button.active { color: var(--purple); border-bottom-color: var(--purple); font-weight: 600; }
 .ra-steps > button.active > span { background: var(--primary-bg); border-color: var(--primary-border); }
 .ra-steps > button:disabled { opacity: .5; cursor: default; }
@@ -84,7 +84,11 @@
 .ra-edit-list-row > .btn { flex-shrink: 0; }
 .ra-admin { max-width: 960px; border-top: 1px solid var(--border); padding-top: 24px; display: flex; flex-direction: column; gap: 18px; }
 .ra-admin h2 { font-size: 17px; font-weight: 600; }
-.agent-config-page { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.agent-config-page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.ra-provenance { display: flex; align-items: flex-start; gap: 12px; font-size: 12.5px; line-height: 1.55; }
+.ra-provenance .badge-ai { flex-shrink: 0; margin-top: 1px; }
+.ra-provenance > span { flex: 1; min-width: 0; color: var(--text-secondary); }
+.ra-provenance strong { color: var(--text-primary); font-weight: 600; }
 .agent-model-section { max-width: 960px; display: flex; flex-direction: column; gap: 24px; }
 .agent-model-section h2 { font-size: 17px; font-weight: 600; }
 .agent-enable, .agent-key-status label { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }

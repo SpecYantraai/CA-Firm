@@ -5,7 +5,8 @@ import { engApi, folderApi, userApi, wpApi } from '../api';
 import { useAuthStore, useAppStore } from '../store';
 import { statusBadgeClass, getErrorMessage, formatDate, formatDateTime, formatBytes, downloadBlob } from '../utils';
 import {
-  ChevronDown, ChevronRight, Folder, FolderOpen, FileText,
+  ChevronDown, ChevronRight, Folder, FolderOpen, FileText, FileSpreadsheet,
+  FileImage, File as FileIcon, FolderPlus, Sparkles, Layers,
   Upload, Plus, RotateCcw, Archive, CheckSquare, Activity,
   Lock, Unlock, Trash2, Send, ShieldAlert, AlertTriangle, CheckCircle2,
   PackageCheck, Download, PenLine, X, ClipboardList, Bell, MessageCircle,
@@ -13,11 +14,61 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import WPDetailPanel from '../components/wps/WPDetailPanel';
+import { ScrollArea } from '../components/common/Resizable';
 import UploadModal from '../components/wps/UploadModal';
 import CreateFolderModal from '../components/folders/CreateFolderModal';
 import ClosureChecklistModal from '../components/closure/ClosureChecklistModal';
 import RollForwardModal from '../components/engagements/RollForwardModal';
 import RiskAssessmentPanel from '../components/agents/RiskAssessmentPanel';
+
+/* ---- File Explorer helpers ------------------------------------------------- */
+function fileMeta(filename) {
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  if (['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)) return { Icon: FileSpreadsheet, color: 'var(--green)' };
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) return { Icon: FileText, color: 'var(--blue)' };
+  if (['pdf'].includes(ext)) return { Icon: FileIcon, color: 'var(--red)' };
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return { Icon: FileImage, color: 'var(--purple)' };
+  return { Icon: FileText, color: 'var(--text-muted)' };
+}
+
+const WP_PILL = {
+  'Draft': { cls: 'pill-notstarted', label: 'Draft' },
+  'Submitted': { cls: 'pill-progress', label: 'Submitted' },
+  'Under Review': { cls: 'pill-reviewed', label: 'Under review' },
+  'Review Notes Raised': { cls: 'pill-blocked', label: 'Notes raised' },
+  'Finalised': { cls: 'pill-approved', label: 'Finalised' },
+};
+function WpPill({ status }) {
+  const m = WP_PILL[status] || { cls: 'pill-notstarted', label: status || '—' };
+  return <span className={`pill ${m.cls}`}>{m.label}</span>;
+}
+
+function WpAvatars({ wp }) {
+  const roles = [
+    { ini: wp.prepared_by_initials, role: 'Preparer' },
+    { ini: wp.reviewer1_initials, role: 'Reviewer 1' },
+    { ini: wp.reviewer2_initials, role: 'Reviewer 2' },
+  ].filter(a => a.ini);
+  if (roles.length === 0) return null;
+  return (
+    <span className="wp-avatars">
+      {roles.map((a, i) => <span key={i} className="avatar tip" data-tip={`${a.role}: ${a.ini}`}>{a.ini}</span>)}
+    </span>
+  );
+}
+
+function collectWPs(section) {
+  const out = [];
+  const walk = (f) => { (f.working_papers || []).forEach(w => out.push(w)); (f.children || []).forEach(walk); };
+  (section.folders || []).forEach(walk);
+  return out;
+}
+function wpProgress(wps) {
+  const total = wps.length;
+  const finalised = wps.filter(w => w.review_status === 'Finalised').length;
+  const inReview = wps.filter(w => ['Submitted', 'Under Review', 'Review Notes Raised'].includes(w.review_status)).length;
+  return { total, finalised, inReview, pct: total ? Math.round((finalised / total) * 100) : 0 };
+}
 
 function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, archived, locked, selectedWpIds, onToggleWP }) {
   const [open, setOpen] = useState(depth === 0);
@@ -26,7 +77,8 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
   const user = useAuthStore(s => s.user);
   const canUpload = !archived && !locked && !['EQCR Reviewer'].includes(user?.role);
 
-  const indent = depth * 20;
+  const indent = depth * 18;
+  const childCount = (folder.children?.length || 0) + (folder.working_papers?.length || 0);
 
   return (
     <div>
@@ -50,27 +102,23 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
       )}
 
       {/* Folder row */}
-      <div className={`tree-folder-row folder-depth-${Math.min(depth, 2)}`} style={{ paddingLeft: 14 + indent }}>
-        <button style={{ background:'none',border:'none',cursor:'pointer',padding:0,color:'var(--text-muted)',display:'flex',alignItems:'center' }}
-          onClick={() => setOpen(!open)}>
-          {open ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+      <div className={`tree-folder-row folder-depth-${Math.min(depth, 2)}`} style={{ paddingLeft: 12 + indent }} onClick={() => setOpen(!open)}>
+        <button className="tree-chevron" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+          onClick={(e) => { e.stopPropagation(); setOpen(!open); }} aria-label={open ? 'Collapse folder' : 'Expand folder'}>
+          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
-        {open ? <FolderOpen size={15} style={{ color:'var(--text-secondary)',flexShrink:0 }}/> : <Folder size={15} style={{ color:'var(--text-secondary)',flexShrink:0 }}/>}
-        {folder.wp_number && (
-          <span className="wp-number" style={{ fontSize:10 }}>{folder.wp_number}</span>
-        )}
-        <span style={{ flex:1,fontSize:13,fontWeight:700,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}
-          onClick={() => setOpen(!open)}>
-          {folder.folder_name}
-        </span>
-        {canUpload && open && (
-          <div style={{ display:'flex',gap:4 }}>
-            <button className="btn btn-icon-sm btn-ghost" title="Upload file" onClick={(e) => { e.stopPropagation(); setShowUpload(true); }}>
-              <Upload size={12}/>
+        {open ? <FolderOpen size={16} className="folder-ico" /> : <Folder size={16} className="folder-ico" />}
+        {folder.wp_number && <span className="wp-number">{folder.wp_number}</span>}
+        <span className="tree-folder-name">{folder.folder_name}</span>
+        {childCount > 0 && <span className="tree-count">{childCount} item{childCount !== 1 ? 's' : ''}</span>}
+        {canUpload && (
+          <div className="tree-row-actions">
+            <button className="icon-btn tip" data-tip="Upload file" onClick={(e) => { e.stopPropagation(); setShowUpload(true); }}>
+              <Upload size={14} />
             </button>
             {depth < 8 && (
-              <button className="btn btn-icon-sm btn-ghost" title="New subfolder" onClick={(e) => { e.stopPropagation(); setShowCreateFolder(true); }}>
-                <Plus size={12}/>
+              <button className="icon-btn tip" data-tip="New subfolder" onClick={(e) => { e.stopPropagation(); setShowCreateFolder(true); }}>
+                <FolderPlus size={14} />
               </button>
             )}
           </div>
@@ -80,22 +128,25 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
       {/* Children */}
       {open && (
         <div>
-          {/* Sub-folders */}
           {folder.children?.map(child => (
             <FolderNode key={child.folder_id} folder={child} depth={depth + 1}
               engagementId={engagementId} onSelectWP={onSelectWP} onRefresh={onRefresh} archived={archived} locked={locked}
-              selectedWpIds={selectedWpIds} onToggleWP={onToggleWP}/>
+              selectedWpIds={selectedWpIds} onToggleWP={onToggleWP} />
           ))}
-          {/* WPs in this folder */}
           {folder.working_papers?.map(wp => (
-            <WPRow key={wp.wp_id} wp={wp} indent={indent + 20}
+            <WPRow key={wp.wp_id} wp={wp} indent={indent + 18}
               selected={selectedWpIds?.has(wp.wp_id)}
               onToggle={(checked) => onToggleWP?.(wp.wp_id, checked)}
-              onSelect={() => onSelectWP(wp)}/>
+              onSelect={() => onSelectWP(wp)} />
           ))}
           {folder.children?.length === 0 && folder.working_papers?.length === 0 && (
-            <div style={{ paddingLeft: 14 + indent + 20, padding:'6px 0 6px ' + (14 + indent + 36) + 'px', fontSize:11, color:'var(--text-muted)' }}>
-              Empty folder
+            <div className="tree-empty-folder" style={{ paddingLeft: 12 + indent + 22 }}>
+              <span><FolderOpen size={13} /> Empty folder</span>
+              {canUpload && (
+                <button className="btn btn-soft btn-xs" onClick={() => setShowUpload(true)}>
+                  <Upload size={12} /> Add working paper
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -105,34 +156,26 @@ function FolderNode({ folder, depth = 0, engagementId, onSelectWP, onRefresh, ar
 }
 
 function WPRow({ wp, indent, onSelect, selected, onToggle }) {
-  const statusColors = {
-    'Draft': 'var(--text-muted)', 'Submitted': 'var(--blue)',
-    'Under Review': 'var(--amber)', 'Review Notes Raised': 'var(--red)', 'Finalised': 'var(--green)'
-  };
-
+  const { Icon, color } = fileMeta(wp.filename);
   return (
-    <div className="tree-wp-row" style={{ paddingLeft: 14 + indent }} onClick={onSelect}>
+    <div className={`tree-wp-row ${selected ? 'is-selected' : ''}`} style={{ paddingLeft: 12 + indent }} onClick={onSelect}>
       <input
         type="checkbox"
-        className="wp-select-box"
+        className="wp-check"
         checked={!!selected}
         onChange={e => onToggle?.(e.target.checked)}
         onClick={e => e.stopPropagation()}
         aria-label={`Select ${wp.filename}`}
       />
-      <FileText size={13} style={{ color:'var(--text-muted)',flexShrink:0 }}/>
+      <Icon size={15} style={{ color, flexShrink: 0 }} />
       <span className="wp-number">{wp.wp_number}</span>
       <span className="wp-name">{wp.filename}</span>
       <div className="wp-meta">
-        <span className="signoff-chip" title="Preparer">{wp.prepared_by_initials || 'P-'}</span>
-        <span className="signoff-chip" title="Reviewer 1">{wp.reviewer1_initials || 'R1-'}</span>
-        <span className="signoff-chip" title="Reviewer 2">{wp.reviewer2_initials || 'R2-'}</span>
         {wp.open_notes_count > 0 && (
-          <span className="badge badge-red" style={{ fontSize:10 }}>{wp.open_notes_count} note{wp.open_notes_count > 1 ? 's' : ''}</span>
+          <span className="badge badge-red" style={{ fontSize: 10 }}>{wp.open_notes_count} note{wp.open_notes_count > 1 ? 's' : ''}</span>
         )}
-        <span style={{ fontSize:10, color: statusColors[wp.review_status] || 'var(--text-muted)', whiteSpace:'nowrap' }}>
-          {wp.review_status}
-        </span>
+        <WpAvatars wp={wp} />
+        <WpPill status={wp.review_status} />
       </div>
     </div>
   );
@@ -214,13 +257,31 @@ export default function EngagementDetailPage() {
   };
 
   if (loading) return (
-    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'var(--text-muted)' }}>
+    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'var(--text-muted)' }}>
       Loading engagement…
     </div>
   );
 
+  const allWPs = Object.values(tree || {}).flatMap(section => collectWPs(section));
+  const engProgress = wpProgress(allWPs);
+  const openNotesTotal = allWPs.reduce((n, wp) => n + (wp.open_notes_count || 0), 0);
+  const finPct = engProgress.total ? Math.round((engProgress.finalised / engProgress.total) * 100) : 0;
+  const revPct = engProgress.total ? Math.round((engProgress.inReview / engProgress.total) * 100) : 0;
+
+  const TAB_META = {
+    files: { label: 'File Explorer', count: allWPs.length },
+    agent: { label: 'Risk Assessment Agent' },
+    requests: { label: 'Client Requests' },
+    quality: { label: 'Quality Checks' },
+    assembly: { label: 'Final Assembly' },
+    esign: { label: 'E-Signatures' },
+    people: { label: 'People' },
+    activity: { label: 'Activity Log' },
+  };
+  const tabs = ['files', 'agent', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'];
+
   return (
-    <div style={{ display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden' }}>
+    <div style={{ display:'flex',flexDirection:'column',height:'100%',overflow:'hidden' }}>
       {showClosure && (
         <ClosureChecklistModal
           engagementId={id}
@@ -247,18 +308,20 @@ export default function EngagementDetailPage() {
       )}
 
       {/* Header */}
-      <div className="page-header">
-        <div className="page-header-left">
-          <h1 className="page-title">{engagement?.client_name}</h1>
-          <div style={{ display:'flex',alignItems:'center',gap:10,marginTop:3 }}>
-            <span style={{ fontFamily:'monospace',fontSize:12,color:'var(--text-secondary)' }}>FY {engagement?.financial_year}</span>
+      <div className="eng-head">
+        <div className="eng-head-main">
+          <h1>{engagement?.client_name}</h1>
+          <div className="eng-head-meta">
+            <span className="eng-head-fy">FY {engagement?.financial_year}</span>
             <span className={statusBadgeClass(engagement?.status)}>{engagement?.status}</span>
+            {engagement?.engagement_type && <span className="badge">{engagement.engagement_type}</span>}
             {engagement?.is_eqcr_designated && <span className="badge badge-purple">EQCR</span>}
             {engagement?.is_small_entity && <span className="badge badge-blue">Small entity</span>}
             {engagement?.workflow_override && <span className="badge badge-amber">Workflow override</span>}
+            {locked && <span className="badge badge-amber"><Lock size={11}/> Read-only</span>}
           </div>
         </div>
-        <div className="page-actions">
+        <div className="eng-head-actions">
           {isPartnerOrAdmin && !locked && (
             <button className={`btn btn-sm ${engagement?.workflow_override ? 'btn-navy' : 'btn-outline'}`} onClick={toggleWorkflowOverride}>
               {engagement?.workflow_override ? <Unlock size={14}/> : <Lock size={14}/>}
@@ -272,6 +335,7 @@ export default function EngagementDetailPage() {
           )}
           {isPartner && locked && (
             <button className="btn btn-outline btn-sm" onClick={async () => {
+              if (!window.confirm('Reopen this engagement? It will become editable again.')) return;
               try { await engApi.reopen(id); load(); toast.success('Engagement reopened'); }
               catch(err) { toast.error(getErrorMessage(err)); }
             }}>
@@ -283,21 +347,37 @@ export default function EngagementDetailPage() {
               <RotateCcw size={14}/> Roll Forward
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => { if (!documentDirty || window.confirm('Discard unsaved document changes?')) navigate('/engagements'); }}>
-            ← Back
-          </button>
         </div>
       </div>
 
+      {/* Progress strip */}
+      {engProgress.total > 0 && (
+        <div className="eng-progress">
+          <div className="progress-stack" title={`${engProgress.finalised} finalised · ${engProgress.inReview} in review · ${engProgress.total} total`}>
+            <span style={{ width: `${finPct}%`, background: 'var(--green)' }} />
+            <span style={{ width: `${revPct}%`, left: `${finPct}%`, background: 'var(--amber)' }} />
+          </div>
+          <span className="eng-progress-label">
+            {engProgress.finalised}/{engProgress.total} finalised
+            {openNotesTotal > 0 && <span className="eng-progress-notes"> · {openNotesTotal} open note{openNotesTotal !== 1 ? 's' : ''}</span>}
+          </span>
+        </div>
+      )}
+
       {/* Tabs */}
-      <div style={{ background:'var(--bg-card)',borderBottom:'1px solid var(--border)',paddingLeft:28,flexShrink:0 }}>
-        <div className="tabs" style={{ borderBottom:'none' }}>
-          {['files', 'agent', 'requests', 'quality', 'assembly', 'esign', ...(canManageTeam ? ['people'] : []), 'activity'].map(tab => (
-            <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`}
-              onClick={() => { if (tab === activeTab || !documentDirty || window.confirm('Discard unsaved document changes?')) setActiveTab(tab); }}>
-              {tab === 'files' ? 'File Explorer' : tab === 'agent' ? 'Risk Assessment Agent' : tab === 'requests' ? 'Client Requests' : tab === 'quality' ? 'Quality Checks' : tab === 'assembly' ? 'Final Assembly' : tab === 'esign' ? 'E-Signatures' : tab === 'people' ? 'People' : 'Activity Log'}
-            </button>
-          ))}
+      <div className="eng-tabs-wrap">
+        <div className="eng-tabs">
+          {tabs.map(tab => {
+            const meta = TAB_META[tab];
+            const showCount = typeof meta.count === 'number' && meta.count > 0;
+            return (
+              <button key={tab} className={`eng-tab ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => { if (tab === activeTab || !documentDirty || window.confirm('Discard unsaved document changes?')) setActiveTab(tab); }}>
+                {meta.label}
+                {showCount && <span className="tab-count">{meta.count}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -308,10 +388,10 @@ export default function EngagementDetailPage() {
           <>
             {/* Folder tree */}
             <div className={`engagement-file-pane ${selectedWP ? 'is-detail-open' : ''}`} style={{ width: selectedWP ? '55%' : '100%', overflow:'hidden', display:'flex', flexDirection:'column', transition:'width .2s', borderRight: selectedWP ? '1px solid var(--border)' : 'none' }}>
-              <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
+              <ScrollArea style={{ flex:1, padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
                 {locked && (
-                  <div style={{ background:'var(--amber-bg)',border:'1px solid rgba(212,131,10,.2)',borderRadius:'var(--r-md)',padding:'10px 14px',fontSize:12,color:'var(--amber)',display:'flex',alignItems:'center',gap:8 }}>
-                    <Archive size={14}/> This engagement is locked - all working papers are read-only
+                  <div className="locked-banner">
+                    <Archive size={14}/> This engagement is locked — all working papers are read-only.
                   </div>
                 )}
 
@@ -351,7 +431,7 @@ export default function EngagementDetailPage() {
                     />
                   ))}
                 </div>
-              </div>
+              </ScrollArea>
             </div>
 
             {/* WP detail panel */}
@@ -1290,31 +1370,52 @@ function PeoplePanel({ engagementId, archived }) {
 
 function SectionBlock({ code, section, engagementId, onSelectWP, onRefresh, archived, canCreateFolder, onCreateFolderInSection, selectedWpIds, onToggleWP }) {
   const [open, setOpen] = useState(true);
+  const { total, finalised, pct } = wpProgress(collectWPs(section));
 
   return (
-    <div className="tree-section">
+    <div className={`tree-section ${open ? '' : 'collapsed'}`}>
       <div className="tree-section-header" onClick={() => setOpen(!open)}>
+        <button className="tree-chevron" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+          onClick={(e) => { e.stopPropagation(); setOpen(!open); }} aria-label={open ? 'Collapse section' : 'Expand section'}>
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
         <span className="tree-section-code">{code}</span>
         <span className="tree-section-name">{section.section_name}</span>
         {section.locked && (
           <span className="badge badge-amber" title="Locked by sequential workflow">
-            <Lock size={11}/> Locked
+            <Lock size={11} /> Locked
           </span>
         )}
-        {canCreateFolder && !section.locked && open && (
-          <button className="btn btn-icon-sm btn-ghost"
-            title="New folder in section" onClick={(e) => { e.stopPropagation(); onCreateFolderInSection(); }}>
-            <Plus size={12}/>
-          </button>
-        )}
-        {open ? <ChevronDown size={16} style={{ color:'var(--text-muted)' }}/> : <ChevronRight size={16} style={{ color:'var(--text-muted)' }}/>}
+        <div className="tree-section-meta">
+          {total > 0 && (
+            <>
+              <div className="progress" style={{ width: 54 }} title={`${finalised} of ${total} finalised`}>
+                <span style={{ width: `${pct}%` }} />
+              </div>
+              <span className="tree-count">{finalised}/{total}</span>
+            </>
+          )}
+          {canCreateFolder && !section.locked && (
+            <div className="tree-row-actions">
+              <button className="icon-btn tip" data-tip="New folder"
+                onClick={(e) => { e.stopPropagation(); onCreateFolderInSection(); }}>
+                <FolderPlus size={14} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {open && (
         <div>
           {section.folders?.length === 0 ? (
-            <div style={{ padding:'16px',fontSize:12,color:'var(--text-muted)',textAlign:'center' }}>
-              No folders yet — add a folder to start organising working papers
+            <div className="tree-empty-folder" style={{ paddingLeft: 34 }}>
+              <span><Folder size={13} /> No folders yet</span>
+              {canCreateFolder && !section.locked && (
+                <button className="btn btn-soft btn-xs" onClick={onCreateFolderInSection}>
+                  <FolderPlus size={12} /> Add folder
+                </button>
+              )}
             </div>
           ) : (
             section.folders?.map(folder => (
@@ -1346,21 +1447,21 @@ function ActivityLog({ engagementId }) {
     engApi.events(engagementId).then(r => setEvents(r.data.data || [])).finally(() => setLoading(false));
   }, [engagementId]);
 
-  const eventLabel = (type) => {
+  const eventMeta = (type) => {
     const map = {
-      'engagement.created': '🟢 Engagement created',
-      'wp.uploaded': '📄 Working paper uploaded',
-      'review.submitted': '📤 Submitted for review',
-      'note.raised': '🔴 Review note raised',
-      'note.closed': '✅ Review note closed',
-      'review.finalised': '✅ WP finalised',
-      'engagement.archived': '📦 Engagement archived',
-      'engagement.reopened': '🔓 Engagement reopened',
-      'engagement.rollforward': '🔄 Roll-forward created',
-      'signoff.recorded': '✍️ Sign-off recorded',
-      'user.assigned': '👤 User assigned',
+      'engagement.created':     { Icon: Sparkles,      color: 'var(--green)', label: 'Engagement created' },
+      'wp.uploaded':            { Icon: Upload,         color: 'var(--blue)',  label: 'Working paper uploaded' },
+      'review.submitted':       { Icon: Send,           color: 'var(--blue)',  label: 'Submitted for review' },
+      'note.raised':            { Icon: AlertTriangle,  color: 'var(--red)',   label: 'Review note raised' },
+      'note.closed':            { Icon: CheckCircle2,   color: 'var(--green)', label: 'Review note closed' },
+      'review.finalised':       { Icon: CheckCircle2,   color: 'var(--green)', label: 'Working paper finalised' },
+      'engagement.archived':    { Icon: Archive,        color: 'var(--text-muted)', label: 'Engagement archived' },
+      'engagement.reopened':    { Icon: Unlock,         color: 'var(--amber)', label: 'Engagement reopened' },
+      'engagement.rollforward': { Icon: RotateCcw,      color: 'var(--blue)',  label: 'Roll-forward created' },
+      'signoff.recorded':       { Icon: PenLine,        color: 'var(--brand)', label: 'Sign-off recorded' },
+      'user.assigned':          { Icon: UserRound,      color: 'var(--brand)', label: 'User assigned' },
     };
-    return map[type] || type;
+    return map[type] || { Icon: Activity, color: 'var(--text-muted)', label: type };
   };
 
   return (
@@ -1374,18 +1475,25 @@ function ActivityLog({ engagementId }) {
           <div className="empty-state-title">No activity yet</div>
         </div>
       ) : (
-        <div style={{ display:'flex',flexDirection:'column',gap:1 }}>
-          {events.map(ev => (
-            <div key={ev.event_id} style={{ display:'flex',gap:14,padding:'10px 0',borderBottom:'1px solid var(--border)',alignItems:'flex-start' }}>
-              <div style={{ fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap',minWidth:130,marginTop:1 }}>
-                {ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—'}
+        <div className="activity-feed">
+          {events.map(ev => {
+            const { Icon, color, label } = eventMeta(ev.event_type);
+            return (
+              <div key={ev.event_id} className="activity-item">
+                <div className="activity-icon" style={{ color }}>
+                  <Icon size={15} />
+                </div>
+                <div className="activity-body">
+                  <div className="activity-label">{label}</div>
+                  <div className="activity-sub">
+                    {ev.actor_name && <span>{ev.actor_name}</span>}
+                    {ev.actor_name && ev.timestamp && <span className="activity-dot">·</span>}
+                    {ev.timestamp && <span>{formatDateTime(ev.timestamp)}</span>}
+                  </div>
+                </div>
               </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13,color:'var(--text-primary)',fontWeight:500 }}>{eventLabel(ev.event_type)}</div>
-                {ev.actor_name && <div style={{ fontSize:11,color:'var(--text-muted)',marginTop:2 }}>by {ev.actor_name}</div>}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
